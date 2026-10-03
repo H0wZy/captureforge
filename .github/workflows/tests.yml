@@ -8,13 +8,14 @@ env:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # Pinned so the ubuntu-latest migration (Ubuntu 26, from 2026-10-19) can't change the libraries under us.
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Cache Blender
         id: cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: blender
           key: blender-${{ env.BLENDER_VERSION }}-linux-x64
@@ -26,8 +27,12 @@ jobs:
           mkdir blender
           tar -xf blender.tar.xz -C blender --strip-components=1
 
+      # libegl1 + Mesa give headless Blender a software (llvmpipe) EGL context for the Workbench renders.
       - name: Blender system libraries
-        run: sudo apt-get update && sudo apt-get install -y libxi6 libxkbcommon0 libsm6 libgl1 libxxf86vm1 libxfixes3 libxrender1
+        run: >
+          sudo apt-get update && sudo apt-get install -y
+          libxi6 libxkbcommon0 libsm6 libgl1 libxxf86vm1 libxfixes3 libxrender1
+          libegl1 libegl-mesa0 libgl1-mesa-dri
 
       - name: Validate manifest
         run: ./blender/blender --command extension validate captureforge
