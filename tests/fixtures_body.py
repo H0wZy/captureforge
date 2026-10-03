@@ -77,3 +77,150 @@ def write_landmarks(path, times, pose_world, pose_vis=None, pose_image=None, fps
         data["head_box"] = np.asarray(head_box, np.float32)
     np.savez_compressed(path, **data)
     return path
+
+
+# ------------------------------------------------------------------ synthetic skeleton motions
+# An independent forward-kinematics oracle: it builds the landmarks from the profile's rest geometry and
+# known local Euler angles (degrees, XYZ, in each bone's canonical rest frame), so a solver test can check that
+# the angles come back. It does not use the solver's or the quaternion module's code.
+
+def _lazy_profile():
+    pure_import()
+    from captureforge.body import landmarks as lm, profile
+    return profile, lm
+
+
+def euler_matrix(deg):
+    """Blender XYZ Euler (degrees) -> 3x3: R = Rz Ry Rx."""
+    a, b, c = np.radians(deg)
+    rx = np.array([[1, 0, 0], [0, np.cos(a), -np.sin(a)], [0, np.sin(a), np.cos(a)]])
+    ry = np.array([[np.cos(b), 0, np.sin(b)], [0, 1, 0], [-np.sin(b), 0, np.cos(b)]])
+    rz = np.array([[np.cos(c), -np.sin(c), 0], [np.sin(c), np.cos(c), 0], [0, 0, 1]])
+    return rz @ ry @ rx
+
+
+NEUTRAL = {"LeftArm": (-90, 0, 0), "RightArm": (-90, 0, 0)}  # standing, arms down (T-pose is the rig's rest)
+
+
+def _attachments():
+    """Landmark index -> (bone, offset from the bone head in the rest frame, character space)."""
+    profile, lm = _lazy_profile()
+    att = {lm.NOSE: ("Head", (0, -0.10, 0.06)), lm.L_EAR: ("Head", (0.075, 0, 0.10)),
+           lm.R_EAR: ("Head", (-0.075, 0, 0.10))}
+    for k, (dx, dz) in {lm.L_EYE_IN: (0.015, 0.10), lm.L_EYE: (0.03, 0.10), lm.L_EYE_OUT: (0.045, 0.10),
+                        lm.R_EYE_IN: (-0.015, 0.10), lm.R_EYE: (-0.03, 0.10), lm.R_EYE_OUT: (-0.045, 0.10),
+                        lm.MOUTH_L: (0.02, 0.02), lm.MOUTH_R: (-0.02, 0.02)}.items():
+        att[k] = ("Head", (dx, -0.09, dz))
+    for side, sx, ids in (("Left", 1, (lm.L_SHOULDER, lm.L_ELBOW, lm.L_WRIST, lm.L_PINKY, lm.L_INDEX, lm.L_THUMB,
+                                       lm.L_HIP, lm.L_KNEE, lm.L_ANKLE, lm.L_HEEL, lm.L_FOOT)),
+                          ("Right", -1, (lm.R_SHOULDER, lm.R_ELBOW, lm.R_WRIST, lm.R_PINKY, lm.R_INDEX, lm.R_THUMB,
+                                         lm.R_HIP, lm.R_KNEE, lm.R_ANKLE, lm.R_HEEL, lm.R_FOOT))):
+        sh, el, wr, pk, ix, th, hip, kn, an, he, ft = ids
+        att.update({sh: (f"{side}Arm", (0, 0, 0)), el: (f"{side}ForeArm", (0, 0, 0)),
+                    wr: (f"{side}Hand", (0, 0, 0)),
+                    pk: (f"{side}Hand", (0.07 * sx, 0.03, 0)), ix: (f"{side}Hand", (0.09 * sx, -0.025, 0)),
+                    th: (f"{side}Hand", (0.02 * sx, -0.045, 0)),
+                    hip: (f"{side}UpLeg", (0, 0, 0)), kn: (f"{side}Leg", (0, 0, 0)),
+                    an: (f"{side}Foot", (0, 0, 0)), he: (f"{side}Foot", (0, 0.07, -0.10)),
+                    ft: (f"{side}ToeBase", (0, 0, 0))})
+    return att
+
+
+def skeleton(euler=None, hips=(0.0, 0.0, 0.0), scale=1.0):
+    """Posed points. `euler`: {bone: (x, y, z) degrees} local rotations, others at rest. Returns
+    (positions, G): the 33 landmarks in character space (hips head at its rest height plus `hips`, all scaled
+    about the origin by `scale`) and the global delta rotation of every bone (dict)."""
+    profile, lm = _lazy_profile()
+    euler = euler or {}
+    G, heads = {}, {}
+    for i, bone in enumerate(profile.BONES):
+        r = profile.ROT[i]
+        g_parent = G[bone.parent] if bone.parent else np.eye(3)
+        b = euler_matrix(euler.get(bone.name, (0, 0, 0)))
+        G[bone.name] = g_parent @ r @ b @ r.T
+        heads[bone.name] = (profile.HEAD[i] + np.asarray(hips) if not bone.parent
+                            else heads[bone.parent] + g_parent @ profile.OFFSET[i])
+    pts = np.zeros((33, 3))
+    for k, (bone, off) in _attachments().items():
+        pts[k] = heads[bone] + G[bone] @ np.asarray(off)
+    return pts * scale, G
+
+
+def char_to_landmark(p):
+    """Character space (+X left, -Y forward, +Z up) -> landmark space (+X right-on-image, +Y up, +Z to camera)."""
+    p = np.asarray(p)
+    return np.stack([p[..., 0], p[..., 2], -p[..., 1]], axis=-1)
+
+
+def rot_y(deg):
+    a = np.radians(deg)
+    return np.array([[np.cos(a), 0, np.sin(a)], [0, 1, 0], [-np.sin(a), 0, np.cos(a)]])
+
+
+def rot_x(deg):
+    a = np.radians(deg)
+    return np.array([[1, 0, 0], [0, np.cos(a), -np.sin(a)], [0, np.sin(a), np.cos(a)]])
+
+
+class Clip:
+    """A synthetic landmark clip (arrays as in the landmark file) plus the euler angles that made it."""
+
+    def __init__(self, times, pose_world, pose_image, pose_vis, euler, size=(1080, 1920)):
+        self.times, self.pose_world, self.pose_image, self.pose_vis = times, pose_world, pose_image, pose_vis
+        self.euler, self.size = euler, size
+
+    def save(self, path, **kw):
+        return write_landmarks(path, self.times, self.pose_world, self.pose_vis, self.pose_image,
+                               size=self.size, **kw)
+
+    def landmarks(self):
+        """The same data as a landmarks.Landmarks object, without a file."""
+        pure_import()
+        from captureforge.body import landmarks as lm
+        n = len(self.times)
+        fps = (n - 1) / (self.times[-1] - self.times[0])
+        return lm.Landmarks(times=self.times, fps_source=fps, size=self.size, pose_world=self.pose_world,
+                            pose_image=self.pose_image, pose_vis=self.pose_vis, meta={"warnings": []})
+
+
+def motion(euler_frames, fps=30.0, scale=1.0, yaw=0.0, pitch=0.0, hips=None, vis=1.0, noise=0.0, seed=0,
+           size=(1080, 1920)):
+    """Landmarks of a person performing `euler_frames` (a list of {bone: degrees} dicts), seen by an
+    orthographic camera: 1 m = 540 px, image centre at the hips' rest position. `yaw` turns the person about the
+    vertical (degrees), `pitch` tilts the camera about its X axis, `hips` is an (n, 3) character-space
+    displacement of the hips (sway, travel, height), `noise` adds white jitter (meters) to every point."""
+    n = len(euler_frames)
+    rng = np.random.default_rng(seed)
+    world = np.zeros((n, 33, 3))
+    image = np.zeros((n, 33, 3))
+    hips = np.zeros((n, 3)) if hips is None else np.asarray(hips, float)
+    turn, tilt = rot_y(yaw), rot_x(pitch)
+    for t in range(n):
+        pts, _ = skeleton(euler_frames[t], hips[t], scale)
+        lmpts = char_to_landmark(pts)
+        centre = (lmpts[23] + lmpts[24]) / 2
+        local = (lmpts - centre) @ turn.T @ tilt.T
+        world[t] = local + rng.normal(0, noise, local.shape) if noise else local
+        absolute = char_to_landmark(pts) @ tilt.T
+        image[t, :, 0] = (size[0] / 2 + absolute[:, 0] * 540) / size[0]
+        image[t, :, 1] = (size[1] / 2 - absolute[:, 1] * 540) / size[1]
+        image[t, :, 2] = 0.0
+    pose_vis = np.full((n, 33), vis, np.float32) if np.isscalar(vis) else np.asarray(vis, np.float32)
+    return Clip(np.arange(n) / fps, world.astype(np.float32), image.astype(np.float32), pose_vis,
+                list(euler_frames), size)
+
+
+def lerp_euler(a, b, t):
+    """Blend two euler dicts (per axis, linear); t in 0..1."""
+    keys = set(a) | set(b)
+    zero = (0, 0, 0)
+    return {k: tuple((1 - t) * np.array(a.get(k, zero)) + t * np.array(b.get(k, zero))) for k in keys}
+
+
+def hands_up_clip(neutral=45, raise_=30, hold=30, fps=30.0, **kw):
+    """Stand still with the arms down, then raise both arms straight up (through the T-pose)."""
+    up = {"LeftArm": (90, 0, 0), "RightArm": (90, 0, 0)}
+    frames = [dict(NEUTRAL)] * neutral
+    frames += [lerp_euler(NEUTRAL, up, (i + 1) / raise_) for i in range(raise_)]
+    frames += [dict(up)] * hold
+    return motion(frames, fps=fps, **kw)

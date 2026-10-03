@@ -105,6 +105,11 @@ TWIST_REF = {
     "RightFoot": (lm.R_HEEL, lm.R_FOOT, lm.R_ANKLE, 1, (-1, 0, 0)),
 }
 
+# Nominal face geometry on the head bone at rest (offsets from the head bone's head, character space): the left
+# ear (the right one mirrors it) and the nose. The solver's rest head frame is built from them, so a nominal head
+# solves to the identity rotation.
+FACE_REST = {"ear": (0.075, 0.0, 0.10), "nose": (0.0, -0.10, 0.06)}
+
 # Euler XYZ ranges in degrees in the bone's rest frame: bone -> (lo, hi). Bones left out are unlimited.
 # Elbows and knees are hinges that cannot bend backwards; the rest are wide guards against solver flips.
 LIMITS = {
