@@ -4,13 +4,14 @@ import bpy
 from bpy.props import (BoolProperty, CollectionProperty, EnumProperty, FloatProperty,
                        IntProperty, PointerProperty, StringProperty)
 
+from .. import prefs
 from . import live
 
 
 # One sidebar tab for the whole suite: sibling modules (body, scan) put their panels in the same category.
 CATEGORY = "CaptureForge"
 # The add-on (extension) id: the suite package that contains this module. Preferences live under it.
-ADDON_ID = __package__.rpartition(".")[0]
+ADDON_ID = prefs.ADDON_ID
 
 
 def _live_record_changed(self, context):
@@ -22,22 +23,6 @@ def _live_record_changed(self, context):
 
 def _is_mesh(self, obj):
     return obj.type == "MESH"
-
-
-class FFPreferences(bpy.types.AddonPreferences):
-    bl_idname = ADDON_ID
-
-    python_path: StringProperty(
-        name="Python", subtype="FILE_PATH",
-        description="python executable that has mediapipe and opencv-python installed (a venv is fine)")
-    model_path: StringProperty(
-        name="Model", subtype="FILE_PATH",
-        description="MediaPipe face_landmarker.task file")
-
-    def draw(self, context):
-        self.layout.prop(self, "python_path")
-        self.layout.prop(self, "model_path")
-        self.layout.operator("faceforge.setup_help")
 
 
 class FFPair(bpy.types.PropertyGroup):
@@ -236,4 +221,4 @@ class FACEFORGE_PT_main(bpy.types.Panel):
         box.operator("faceforge.render_sheet")
 
 
-classes = (FFPreferences, FFPair, FFReportRow, FFSettings, FACEFORGE_UL_report, FACEFORGE_UL_pairs, FACEFORGE_PT_main)
+classes = (FFPair, FFReportRow, FFSettings, FACEFORGE_UL_report, FACEFORGE_UL_pairs, FACEFORGE_PT_main)

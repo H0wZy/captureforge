@@ -320,7 +320,7 @@ def test_09_operators():
     captureforge.register()
     try:
         from captureforge.face import ui
-        assert ui.ADDON_ID == "captureforge" and ui.FFPreferences.bl_idname == "captureforge"
+        assert ui.ADDON_ID == "captureforge" and captureforge.prefs.CFPreferences.bl_idname == "captureforge"
         s = scene.faceforge
         s.preset, s.custom_names = "CUSTOM", ", ".join(POSES)
         s.start_frame, s.neutral_frame = 1, 0

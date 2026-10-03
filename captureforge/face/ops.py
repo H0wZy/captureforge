@@ -5,8 +5,8 @@ import tempfile
 
 import bpy
 
+from ..prefs import pref as _pref
 from . import autofit, bake, live, markers, mocap, presets, quality, sheet, split, video
-from .ui import ADDON_ID
 
 
 def preset_names(settings):
@@ -35,12 +35,6 @@ def _import_csv(context, path):
     if unmatched:
         msg += f"; unmatched columns: {', '.join(unmatched)}"
     return msg
-
-
-def _pref(context, name, env):
-    """Add-on preference `name`, falling back to an environment variable (CI, headless agents)."""
-    addon = context.preferences.addons.get(ADDON_ID)
-    return (getattr(addon.preferences, name, "") if addon else "") or os.environ.get(env, "")
 
 
 class _Op(bpy.types.Operator):

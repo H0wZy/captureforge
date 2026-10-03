@@ -26,6 +26,11 @@ jobs:
       - run: |
           python3 tests/test_video_to_csv.py
           python3 tests/test_webcam_stream.py
+      # Pure body tests need numpy; installed here for the test run only (it is not a dependency of the add-on).
+      - run: |
+          python3 -m venv .venv-dev
+          .venv-dev/bin/pip install numpy
+          for t in tests/test_body_*.py; do .venv-dev/bin/python "$t" || exit 1; done
 
   # Stage 2: the real suite inside Blender, oldest supported LTS and the current release.
   blender:
@@ -47,6 +52,8 @@ jobs:
         run: ./blender/blender --command extension validate captureforge
       - name: Blender tests
         run: timeout 600 ./blender/blender --background --factory-startup --python tests/run_tests.py
+      - name: BodyForge Blender tests
+        run: timeout 600 ./blender/blender --background --factory-startup --python tests/run_body_tests.py
 
   # Stage 3: the installable zip, kept as a workflow artifact.
   build:
