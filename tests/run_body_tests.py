@@ -36,6 +36,9 @@ def clean():
     for coll in (bpy.data.armatures, bpy.data.actions, bpy.data.meshes):
         for item in list(coll):
             coll.remove(item)
+    scene = bpy.context.scene
+    scene.render.fps, scene.render.fps_base = 30, 1.0
+    scene.frame_start, scene.frame_end = 1, 250
     bpy.context.view_layer.update()
 
 
@@ -56,7 +59,7 @@ def test_01_reference_armature_has_the_profile_bones_in_t_pose():
     clean()
     obj = fx.implemented(rigtools.create_reference_armature())
     assert obj.type == "ARMATURE" and obj.name in bpy.context.scene.objects
-    assert [b.name for b in obj.data.bones] == ["mixamorig:" + n for n in profile.NAMES]
+    assert sorted(b.name for b in obj.data.bones) == sorted("mixamorig:" + n for n in profile.NAMES)
     for i, name in enumerate(profile.NAMES):
         bone = obj.data.bones["mixamorig:" + name]
         assert np.allclose(np.array(bone.head_local), profile.HEAD[i], atol=1e-5), name
@@ -65,7 +68,7 @@ def test_01_reference_armature_has_the_profile_bones_in_t_pose():
         expected = profile.BONES[i].parent
         assert (bone.parent.name[len("mixamorig:"):] if bone.parent else None) == expected, name
     plain = rigtools.create_reference_armature(name="Plain", prefix="")
-    assert [b.name for b in plain.data.bones] == list(profile.NAMES)
+    assert sorted(b.name for b in plain.data.bones) == sorted(profile.NAMES)
     assert plain.name != obj.name
 
 
@@ -418,6 +421,47 @@ def test_18_export_operator_writes_the_file_and_warns_about_scale():
         assert "scale" in str(e).lower()
     else:
         raise AssertionError("expected the scale refusal")
+
+
+def test_19_hands_flow_through_the_operator_to_the_finger_bones():
+    clean()
+    scene = bpy.context.scene
+    bpy.ops.bodyforge.create_reference()
+    s = scene.bodyforge
+    arm = s.armature
+    assert len(arm.data.bones) == len(profile.NAMES) == 52, "the reference rig has fingers"
+    closed = dict(fx.NEUTRAL, **{f"LeftHand{f}{k}": (-a, 0, 0) for f in ("Index", "Middle", "Ring", "Pinky")
+                                 for k, a in enumerate((80, 90, 60), 1)})
+    frames = [dict(fx.NEUTRAL)] * 45 + [closed] * 20
+    s.landmarks_path = fx.motion(frames, hands=True).save(os.path.join(TMP, "hands.npz"))
+    s.use_hands = True
+    assert bpy.ops.bodyforge.landmarks_to_body() == {"FINISHED"} and s.warnings == ""
+    clip = apply.read_clip(arm.animation_data.action, "raw")
+    assert clip.flags["fingers"] is True
+    _, head = solve.fk(clip.rot, clip.hips_pos)
+    scene.frame_set(60)
+    bpy.context.view_layer.update()
+    for name in ("LeftHandIndex2", "LeftHandIndex3", "LeftHandPinky3"):
+        i = profile.INDEX[name]
+        got = np.array(arm.pose.bones["mixamorig:" + name].head)
+        assert np.linalg.norm(got - head[59, i]) < 1e-3, (name, got, head[59, i])
+    open_tip = np.array(arm.pose.bones["mixamorig:RightHandIndex3"].tail)
+    scene.frame_set(1)
+    bpy.context.view_layer.update()
+    assert np.linalg.norm(np.array(arm.pose.bones["mixamorig:LeftHandIndex3"].tail) - open_tip * [-1, 1, 1]) < 1e-3
+    s.landmarks_path = fx.motion(frames).save(os.path.join(TMP, "nohands.npz"))  # hands on, but the file has none
+    assert bpy.ops.bodyforge.landmarks_to_body() == {"FINISHED"} and "no hand data" in s.warnings
+    s.use_hands = False
+    s.video_path = os.path.join(TMP, "clip2.mp4")
+    open(s.video_path, "wb").write(b"x")
+    s.use_hands = True
+    os.environ.pop("BODYFORGE_HAND_MODEL", None)
+    try:
+        bpy.ops.bodyforge.video_to_body()
+    except RuntimeError as e:
+        assert "hand model" in str(e) or "Python for the pose helper" in str(e)
+    else:
+        raise AssertionError("expected the setup message")
 
 
 def test_11_real_mediapipe_end_to_end():

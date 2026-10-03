@@ -303,5 +303,107 @@ def test_from_file_reads_resamples_calibrates_and_solves():
     assert abs(kept.clip.fps - 60.0) < 1e-6 and len(kept.clip.times) == 160
 
 
+def test_bones_without_landmarks_follow_their_parent():
+    twisted = dict(fx.NEUTRAL, Spine=(0, 20, 0), Spine1=(0, 10, 0), Spine2=(0, 10, 0), LeftFoot=(30, 0, 0))
+    frames = [dict(fx.NEUTRAL)] * 45 + [twisted] * 10
+    _, _, out = solved(frames)
+    for bone in ("LeftShoulder", "RightShoulder", "LeftToeBase", "RightToeBase"):
+        assert out.rot[:, profile.INDEX[bone], 0].min() > 0.99999, f"{bone} keeps its rest rotation relative to its parent"
+
+
+# ------------------------------------------------------------------ fingers and palm-driven twist (T036)
+
+FINGERS = ("Index", "Middle", "Ring", "Pinky", "Thumb")
+
+
+def curl(side, amounts=(80, 90, 60)):
+    """Euler dict that closes one hand: every finger bone rotates about its own X axis."""
+    return {f"{side}Hand{f}{k}": (-a, 0, 0) for f in FINGERS for k, a in enumerate(amounts, 1)}
+
+
+def hand_solve(frames, use_hands=True, mutate=None, **kw):
+    clip = fx.motion(frames, hands=True, **kw)
+    if mutate:
+        mutate(clip)
+    lm = clip.landmarks()
+    calib = calibrate.calibrate(lm, 1.5)
+    return clip, solve.solve(lm, calib, use_hands=use_hands)
+
+
+def test_open_hand_and_fist_give_different_finger_rotations_inside_the_limits():
+    frames = [dict(fx.NEUTRAL)] * 45 + [dict(fx.NEUTRAL, **curl("Left"))] * 20
+    clip, out = hand_solve(frames)
+    out = fx.implemented(out)
+    from captureforge.body import quat
+    fingers = [f"Left{'Hand'}{f}{k}" for f in FINGERS for k in (1, 2, 3)]
+    err = global_error(out, frames, fingers)
+    assert max(err.values()) < 4.0, err
+    i = profile.INDEX["LeftHandIndex1"]
+    assert angle_between(quat.to_matrix(out.rot[10, i]), quat.to_matrix(out.rot[60, i])) > 60, "fist differs from open"
+    assert angle_between(quat.to_matrix(out.rot[10, i]), np.eye(3)) < 3, "an open hand is the rest pose"
+    assert abs(np.degrees(quat.to_euler(out.rot[60, i]))[0] - (-80)) < 4, "curl is a rotation about the local X axis"
+    right = [profile.INDEX[f"RightHand{f}{k}"] for f in FINGERS for k in (1, 2, 3)]
+    assert angle_between(quat.to_matrix(out.rot[60][right]), np.eye(3)).max() < 3, "the other hand stays open"
+    for name in fingers:
+        lim = profile.LIMITS.get(name)
+        if lim:
+            e = np.degrees(quat.to_euler(out.rot[:, profile.INDEX[name]]))
+            assert (e >= np.array(lim[0]) - 1).all() and (e <= np.array(lim[1]) + 1).all(), name
+    assert out.flags["fingers"] is True
+
+
+def test_forearm_twist_follows_the_palm_when_the_hands_are_tracked():
+    twist = dict(fx.NEUTRAL, LeftForeArm=(0, 60, -70), RightForeArm=(0, -50, 80), LeftArm=(0, 0, 0), RightArm=(0, 0, 0))
+    frames = [dict(fx.NEUTRAL)] * 45 + [twist] * 15
+
+    def blur_palm(clip):  # the pose model gives no usable thumb, index and pinky: they sit on the wrist
+        clip.pose_world[:, [17, 19, 21]] = clip.pose_world[:, [15]]
+        clip.pose_world[:, [18, 20, 22]] = clip.pose_world[:, [16]]
+    _, without = hand_solve(frames, use_hands=False, mutate=blur_palm)
+    _, with_hands = hand_solve(frames, use_hands=True, mutate=blur_palm)
+    bones = ["LeftForeArm", "RightForeArm", "LeftHand", "RightHand"]
+    bad = global_error(fx.implemented(without), frames, bones)
+    good = global_error(fx.implemented(with_hands), frames, bones)
+    assert max(good.values()) < 4.0, good
+    assert max(bad.values()) > 15, f"without hands the palm is unknown, so the test is meaningful: {bad}"
+
+
+def test_lost_hands_bridge_through_gaps_and_relax_to_rest_at_the_end():
+    from captureforge.body import quat
+    closed = dict(fx.NEUTRAL, **curl("Left"))
+    frames = [dict(fx.NEUTRAL)] * 20 + [fx.lerp_euler(fx.NEUTRAL, closed, (k + 1) / 10) for k in range(10)] + [closed] * 60
+
+    def lose(clip):
+        for a, b in ((40, 46), (70, 90)):
+            clip.hands_vis[a:b, 0] = 0
+            clip.hands_world[a:b, 0] = np.nan
+    clip, out = hand_solve(frames, mutate=lose)
+    out = fx.implemented(out)
+    i = profile.INDEX["LeftHandIndex2"]
+    rest = np.array([1.0, 0, 0, 0])
+    ang = np.degrees(quat.angle(quat.mul(out.rot[:, i], quat.conj(rest))))
+    steps = np.degrees(quat.angle(quat.mul(out.rot[1:, i], quat.conj(out.rot[:-1, i]))))
+    assert steps.max() < 14, f"no snapping: biggest step {steps.max():.1f} degrees"
+    assert abs(ang[43] - ang[39]) < 6 and abs(ang[43] - ang[47]) < 6, "bridged across the short gap"
+    tail = ang[69:90]
+    assert (np.diff(tail) <= 0.5).all() and tail[-1] < 5 and tail[0] > 60, "relaxes smoothly to the rest pose"
+    assert out.conf[50, profile.INDEX["LeftHandIndex2"]] > 0.9 and out.conf[43, profile.INDEX["LeftHandIndex2"]] < 0.5
+
+
+def test_hands_off_leaves_the_fingers_at_rest_and_the_rest_of_the_clip_identical():
+    frames = [dict(fx.NEUTRAL)] * 45 + [dict(fx.NEUTRAL, **curl("Left"), LeftForeArm=(0, 30, -40))] * 15
+    clip, off = hand_solve(frames, use_hands=False)
+    off = fx.implemented(off)
+    fingers = [profile.INDEX[n] for n in profile.FINGER_BONES]
+    assert np.allclose(off.rot[:, fingers], np.array([1.0, 0, 0, 0])) and off.flags["fingers"] is False
+    plain = fx.motion(frames)
+    lm = plain.landmarks()
+    ref = solve.solve(lm, calibrate.calibrate(lm, 1.5))
+    others = [i for i in range(len(profile.BONES)) if i not in fingers]
+    assert np.allclose(off.rot[:, others], ref.rot[:, others], atol=1e-9), "otherwise identical"
+    no_data = solve.solve(lm, calibrate.calibrate(lm, 1.5), use_hands=True)
+    assert np.allclose(no_data.rot[:, fingers], np.array([1.0, 0, 0, 0])) and no_data.flags["fingers"] is False
+
+
 if __name__ == "__main__":
     fx.run_all(globals())

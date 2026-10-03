@@ -72,7 +72,7 @@ def mirror(clip):
     """Swap left and right: every bone takes its partner's pose reflected across the YZ plane."""
     G, _ = solve.fk(clip.rot, clip.hips_pos)
     swap = _partner()
-    rot = solve.to_local(M @ G[:, swap] @ M)
+    rot = solve.to_local(M @ G[:, swap] @ M, driven=None)
     for i in range(rot.shape[1]):
         rot[:, i] = quat.continuity(rot[:, i])
     hips = clip.hips_pos.copy()

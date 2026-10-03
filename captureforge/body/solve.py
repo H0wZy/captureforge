@@ -19,6 +19,7 @@ from . import profile, quat
 from .calibrate import point
 
 LOW_CONF = 0.5          # below this a bone is bridged from its good neighbours in time
+RELAX_SECONDS = 0.3      # time fingers take to relax to rest when the hand is lost for good
 SPIKE = 0.15            # m, one-frame point jump (front/back flip) that is replaced by its neighbours' mean
 NEUTRAL_BIAS = ("Hips", "Spine", "Spine1", "Spine2", "Neck", "Head", "LeftUpLeg", "RightUpLeg", "LeftLeg",
                 "RightLeg", "LeftFoot", "RightFoot")
@@ -84,6 +85,22 @@ def _target(a, s, d_rest, s_rest):
     return _frame(a, s) @ np.swapaxes(_frame(np.asarray(d_rest, float), np.asarray(s_rest, float)), -1, -2)
 
 
+def _arc(a, b):
+    """Rotation matrices (m, 3, 3) taking the unit vector a to each unit vector of b (m, 3) along the shortest arc."""
+    v = np.cross(a, b)
+    c = (b @ a)[:, None, None]
+    k = np.zeros((len(b), 3, 3))
+    k[:, 0, 1], k[:, 0, 2], k[:, 1, 0] = -v[:, 2], v[:, 1], v[:, 2]
+    k[:, 1, 2], k[:, 2, 0], k[:, 2, 1] = -v[:, 0], -v[:, 1], v[:, 0]
+    r = np.eye(3) + k + (k @ k) / np.maximum(1 + c, 1e-9)
+    flip = (c[:, 0, 0] < -1 + 1e-6)  # opposite vectors: half a turn about any axis perpendicular to a
+    if flip.any():
+        axis = np.cross(a, (1.0, 0, 0) if abs(a[0]) < 0.9 else (0, 1.0, 0))
+        axis /= np.linalg.norm(axis)
+        r[flip] = 2 * np.outer(axis, axis) - np.eye(3)
+    return r
+
+
 def _smooth01(x):
     x = np.clip(x, 0, 1)
     return x * x * (3 - 2 * x)
@@ -95,8 +112,10 @@ def _normal(P, key):
     return sign * _unit(np.cross(P[:, b] - P[:, a], P[:, c] - P[:, a])), np.asarray(rest, float)
 
 
-def _targets(P):
-    """Global delta rotation matrices (m, B, 3, 3) for the driven bones; others stay identity."""
+def _targets(P, H=None, good=None):
+    """Global delta rotation matrices (m, B, 3, 3) for the driven bones; others stay identity.
+    With hand landmarks H (m, 2, 21, 3, character space) and `good` (m, 2) bool the palm normal comes from the
+    hand (forearm and hand twist follow the palm) and the finger bones are driven too."""
     m = len(P)
     G = np.tile(np.eye(3), (m, B, 1, 1))
     ix = profile.INDEX
@@ -123,12 +142,19 @@ def _targets(P):
     fwd_h = fwd_h - np.sum(fwd_h * _unit(left_h), axis=-1, keepdims=True) * _unit(left_h)
     G[:, ix["Head"]] = _target(np.cross(fwd_h, left_h), fwd_h, up_r, fwd_r)
     G[:, ix["Neck"]] = _target(ears_c - sh_c, fwd_h, up_rest, fwd_r)
-    for side, S in (("Left", dict(sh=lm.L_SHOULDER, el=lm.L_ELBOW, wr=lm.L_WRIST, idx=lm.L_INDEX, pk=lm.L_PINKY,
+    for side_i, (side, S) in enumerate((("Left", dict(sh=lm.L_SHOULDER, el=lm.L_ELBOW, wr=lm.L_WRIST, idx=lm.L_INDEX, pk=lm.L_PINKY,
                                   hip=lm.L_HIP, kn=lm.L_KNEE, an=lm.L_ANKLE, ft=lm.L_FOOT)),
-                    ("Right", dict(sh=lm.R_SHOULDER, el=lm.R_ELBOW, wr=lm.R_WRIST, idx=lm.R_INDEX, pk=lm.R_PINKY,
-                                   hip=lm.R_HIP, kn=lm.R_KNEE, an=lm.R_ANKLE, ft=lm.R_FOOT))):
+                                        ("Right", dict(sh=lm.R_SHOULDER, el=lm.R_ELBOW, wr=lm.R_WRIST, idx=lm.R_INDEX,
+                                                       pk=lm.R_PINKY, hip=lm.R_HIP, kn=lm.R_KNEE, an=lm.R_ANKLE,
+                                                       ft=lm.R_FOOT)))):
         d = {n: profile.DIR[ix[side + n]] for n in ("Arm", "ForeArm", "Hand", "Foot")}
         palm, palm_rest = _normal(P, side + "Hand")
+        hand_dir = point(P, (S["idx"], S["pk"])) - P[:, S["wr"]]
+        if H is not None:
+            h, ok = H[:, side_i], good[:, side_i, None]
+            sign = profile.TWIST_REF[side + "Hand"][3]
+            palm = np.where(ok, sign * _unit(np.cross(h[:, 5] - h[:, 0], h[:, 17] - h[:, 0])), palm)
+            hand_dir = np.where(ok, h[:, 9] - h[:, 0], hand_dir)
         foot, foot_rest = _normal(P, side + "Foot")
         upper, fore = P[:, S["el"]] - P[:, S["sh"]], P[:, S["wr"]] - P[:, S["el"]]
         # arm: the elbow plane when the elbow is bent, the palm when the arm is straight
@@ -136,7 +162,14 @@ def _targets(P):
         w = _smooth01((np.linalg.norm(np.cross(_unit(upper), _unit(fore)), axis=-1, keepdims=True) - 0.2) / 0.3)
         G[:, ix[side + "Arm"]] = _target(upper, w * bend - (1 - w) * palm, d["Arm"], bend_rest)
         G[:, ix[side + "ForeArm"]] = _target(fore, palm, d["ForeArm"], palm_rest)
-        G[:, ix[side + "Hand"]] = _target(point(P, (S["idx"], S["pk"])) - P[:, S["wr"]], palm, d["Hand"], palm_rest)
+        G[:, ix[side + "Hand"]] = _target(hand_dir, palm, d["Hand"], palm_rest)
+        if H is not None:  # fingers: pure swing from the parent bone (a finger hinges about its knuckle, no twist)
+            for finger, ids in profile.FINGER_LANDMARKS.items():
+                parent_g = G[:, ix[side + "Hand"]]
+                for k in (1, 2, 3):
+                    name = f"{side}Hand{finger}{k}"
+                    seen = _unit(np.einsum("mji,mj->mi", parent_g, h[:, ids[k]] - h[:, ids[k - 1]]))
+                    parent_g = G[:, ix[name]] = parent_g @ _arc(profile.DIR[ix[name]], seen)
         # leg: the knee plane when the knee is bent, the foot when the leg is straight
         thigh, shin = P[:, S["kn"]] - P[:, S["hip"]], P[:, S["an"]] - P[:, S["kn"]]
         knee, knee_rest = _normal(P, side + "UpLeg")
@@ -231,9 +264,10 @@ def retarget(rot, rest_rot, parent, present):
 
 # ------------------------------------------------------------------ the solver
 
-def to_local(G_target, bias=None):
+def to_local(G_target, bias=None, driven=DRIVEN):
     """Chain global-delta targets (m, B, 3, 3) into joint-limit-clamped local quaternions (m, B, 4).
-    `bias` maps bone names to a rest-offset matrix removed from that bone's target first."""
+    `bias` maps bone names to a rest-offset matrix removed from that bone's target first. Bones outside `driven`
+    (no landmarks: shoulders, toes) keep their rest rotation relative to their parent; None = every bone is driven."""
     bias = bias or {}
     m = len(G_target)
     Gm = np.empty((m, B, 3, 3))
@@ -241,6 +275,10 @@ def to_local(G_target, bias=None):
     for i, bone in enumerate(profile.BONES):
         r = profile.ROT[i]
         gp = Gm[:, profile.PARENT[i]] if profile.PARENT[i] >= 0 else np.tile(np.eye(3), (m, 1, 1))
+        if driven is not None and bone.name not in driven:
+            out[:, i] = quat.IDENTITY
+            Gm[:, i] = gp
+            continue
         gt = G_target[:, i]
         if bone.name in bias:
             gt = gt @ bias[bone.name].T
@@ -256,12 +294,34 @@ def to_local(G_target, bias=None):
     return out
 
 
-def solve(landmark_file, calib, keep_travel=False):
-    """Landmarks (resampled Landmarks object) and their calibration to a MotionClip on the profile."""
+def _relax(q, good, frames):
+    """Fingers (local quaternions (m, 4)) where the hand was not seen: bridge short gaps between the good frames,
+    ease to the rest pose over `frames` frames after the last good one, and ease in from rest before the first."""
+    ids = np.flatnonzero(good)
+    if not len(ids):
+        return np.tile(quat.IDENTITY, (len(q), 1))
+    q = _bridge(q, good)
+    rest = np.broadcast_to(quat.IDENTITY, q.shape[1:])
+    last, first = ids[-1], ids[0]
+    for k in range(last + 1, len(q)):
+        q[k] = quat.slerp(q[last], rest, min((k - last) / frames, 1.0))
+    for k in range(first):
+        q[k] = quat.slerp(rest, q[first], max(1.0 - (first - k) / frames, 0.0))
+    return q
+
+
+def solve(landmark_file, calib, keep_travel=False, use_hands=False):
+    """Landmarks (resampled Landmarks object) and their calibration to a MotionClip on the profile.
+    `use_hands` (needs hand landmarks in the file) adds the fingers and lets the palm drive the forearm twist."""
     L = landmark_file
     P = despike(to_character(L.pose_world.astype(float), calib))
     conf = _confidence(L.pose_vis)
-    G = _targets(P)
+    hands = use_hands and L.hands_world is not None
+    H = good = None
+    if hands:
+        H = to_character(np.nan_to_num(L.hands_world.astype(float)), calib)
+        good = (L.hands_vis >= LOW_CONF) & ~np.isnan(L.hands_world).any(axis=(2, 3))
+    G = _targets(P, H, good)
     # bridge low-confidence bones, in global space, before the chain turns them into local rotations
     Gq = quat.continuity(quat.from_matrix(G))
     for i in range(B):
@@ -273,12 +333,20 @@ def solve(landmark_file, calib, keep_travel=False):
         for name in NEUTRAL_BIAS:
             i = profile.INDEX[name]
             bias[name] = quat.to_matrix(quat.mean(Gq[w, i], axis=0))
-    rot = to_local(G, bias)
+    rot = to_local(G, bias, DRIVEN + profile.FINGER_BONES if hands else DRIVEN)
+    if hands:
+        relax = max(1, int(round(RELAX_SECONDS * L.fps)))
+        for side_i, side in enumerate(("Left", "Right")):
+            for name in profile.FINGER_BONES:
+                if name.startswith(side):
+                    i = profile.INDEX[name]
+                    rot[:, i] = _relax(quat.continuity(rot[:, i]), good[:, side_i], relax)
+                    conf[:, i] = good[:, side_i]
     for i in range(B):
         rot[:, i] = quat.continuity(rot[:, i])
     hips = _hips(L, P, calib, keep_travel)
     return MotionClip(fps=L.fps, times=L.times.copy(), rot=rot, hips_pos=hips,
-                      contact=np.zeros((len(P), 2), bool), conf=conf)
+                      contact=np.zeros((len(P), 2), bool), conf=conf, flags={"fingers": bool(hands)})
 
 
 def _hips(L, P, calib, keep_travel):
@@ -310,7 +378,7 @@ def _hips(L, P, calib, keep_travel):
 Result = namedtuple("Result", "clip calib lm warnings")
 
 
-def from_file(path, fps=30.0, keep_source_fps=False, neutral_seconds=1.5, keep_travel=False):
+def from_file(path, fps=30.0, keep_source_fps=False, neutral_seconds=1.5, keep_travel=False, use_hands=False):
     """Read, resample, calibrate and solve a landmark file. Returns Result(clip, calib, lm, warnings), where the
     warnings are plain-text lines for the user (no person for some frames, no neutral pose, estimator notes)."""
     lm_file = lm.resample(lm.read(path), None if keep_source_fps else fps)
@@ -318,4 +386,7 @@ def from_file(path, fps=30.0, keep_source_fps=False, neutral_seconds=1.5, keep_t
     warnings = list(calib.warnings) + list(lm_file.meta.get("warnings", []))
     for start, end in lm_file.gaps:
         warnings.append(f"No person found in frames {start} to {end - 1}: the pose is bridged across the gap.")
-    return Result(solve(lm_file, calib, keep_travel), calib, lm_file, warnings)
+    if use_hands and lm_file.hands_world is None:
+        warnings.append("Hands are on but the landmark file has no hand data: the fingers stay at rest. "
+                        "Run the helper with the hand model to track them.")
+    return Result(solve(lm_file, calib, keep_travel, use_hands), calib, lm_file, warnings)

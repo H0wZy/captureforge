@@ -203,7 +203,7 @@ def test_mirror_swaps_left_and_right():
     frames = [dict(fx.NEUTRAL, LeftArm=(90, 0, 0), LeftForeArm=(0, 20, -60), Head=(0, 30, 0), LeftUpLeg=(-40, 0, 0))
               for _ in range(5)]
     clip = fx.motion_clip(frames, np.tile([0.1, 0.0, 0.0], (5, 1)))
-    clip = clip.replace(contact=np.array([[True, False]] * 5), conf=np.tile(np.linspace(0.2, 1, 22), (5, 1)))
+    clip = clip.replace(contact=np.array([[True, False]] * 5), conf=np.tile(np.linspace(0.2, 1, len(profile.BONES)), (5, 1)))
     out = fx.implemented(clipops.mirror(clip))
     G0, h0 = solve.fk(clip.rot, clip.hips_pos)
     G1, h1 = solve.fk(out.rot, out.hips_pos)

@@ -126,24 +126,46 @@ def _attachments():
     return att
 
 
-def skeleton(euler=None, hips=(0.0, 0.0, 0.0), scale=1.0):
-    """Posed points. `euler`: {bone: (x, y, z) degrees} local rotations, others at rest. Returns
-    (positions, G): the 33 landmarks in character space (hips head at its rest height plus `hips`, all scaled
-    about the origin by `scale`) and the global delta rotation of every bone (dict)."""
-    profile, lm = _lazy_profile()
-    euler = euler or {}
+def _fk(euler, hips):
+    """Oracle forward kinematics: global delta rotation and head position of every profile bone."""
+    profile, _ = _lazy_profile()
     G, heads = {}, {}
     for i, bone in enumerate(profile.BONES):
         r = profile.ROT[i]
         g_parent = G[bone.parent] if bone.parent else np.eye(3)
-        b = euler_matrix(euler.get(bone.name, (0, 0, 0)))
+        b = euler_matrix((euler or {}).get(bone.name, (0, 0, 0)))
         G[bone.name] = g_parent @ r @ b @ r.T
         heads[bone.name] = (profile.HEAD[i] + np.asarray(hips) if not bone.parent
                             else heads[bone.parent] + g_parent @ profile.OFFSET[i])
+    return G, heads
+
+
+def skeleton(euler=None, hips=(0.0, 0.0, 0.0), scale=1.0):
+    """Posed points. `euler`: {bone: (x, y, z) degrees} local rotations, others at rest. Returns
+    (positions, G): the 33 landmarks in character space (hips head at its rest height plus `hips`, all scaled
+    about the origin by `scale`) and the global delta rotation of every bone (dict)."""
+    G, heads = _fk(euler, hips)
     pts = np.zeros((33, 3))
     for k, (bone, off) in _attachments().items():
         pts[k] = heads[bone] + G[bone] @ np.asarray(off)
     return pts * scale, G
+
+
+def skeleton_hands(euler=None, hips=(0.0, 0.0, 0.0), scale=1.0):
+    """The 21 MediaPipe hand landmarks of both hands, (2, 21, 3) in character space (index 0 = the left hand):
+    wrist, then the knuckle and joint heads and the tip of each finger chain (finger bones of the profile)."""
+    profile, _ = _lazy_profile()
+    G, heads = _fk(euler, hips)
+    out = np.zeros((2, 21, 3))
+    for side_i, side in enumerate(("Left", "Right")):
+        out[side_i, 0] = heads[f"{side}Hand"]
+        for finger, ids in profile.FINGER_LANDMARKS.items():
+            for k in (1, 2, 3):
+                out[side_i, ids[k - 1]] = heads[f"{side}Hand{finger}{k}"]
+            last = f"{side}Hand{finger}3"
+            i = profile.INDEX[last]
+            out[side_i, ids[3]] = heads[last] + G[last] @ (profile.TAIL[i] - profile.HEAD[i])
+    return out * scale
 
 
 def char_to_landmark(p):
@@ -165,13 +187,14 @@ def rot_x(deg):
 class Clip:
     """A synthetic landmark clip (arrays as in the landmark file) plus the euler angles that made it."""
 
-    def __init__(self, times, pose_world, pose_image, pose_vis, euler, size=(1080, 1920)):
+    def __init__(self, times, pose_world, pose_image, pose_vis, euler, size=(1080, 1920), hands_world=None,
+                 hands_vis=None):
         self.times, self.pose_world, self.pose_image, self.pose_vis = times, pose_world, pose_image, pose_vis
-        self.euler, self.size = euler, size
+        self.euler, self.size, self.hands_world, self.hands_vis = euler, size, hands_world, hands_vis
 
     def save(self, path, **kw):
         return write_landmarks(path, self.times, self.pose_world, self.pose_vis, self.pose_image,
-                               size=self.size, **kw)
+                               size=self.size, hands_world=self.hands_world, hands_vis=self.hands_vis, **kw)
 
     def landmarks(self):
         """The same data as a landmarks.Landmarks object, without a file."""
@@ -180,19 +203,22 @@ class Clip:
         n = len(self.times)
         fps = (n - 1) / (self.times[-1] - self.times[0])
         return lm.Landmarks(times=self.times, fps_source=fps, size=self.size, pose_world=self.pose_world,
-                            pose_image=self.pose_image, pose_vis=self.pose_vis, meta={"warnings": []})
+                            pose_image=self.pose_image, pose_vis=self.pose_vis, meta={"warnings": []},
+                            hands_world=self.hands_world, hands_vis=self.hands_vis)
 
 
 def motion(euler_frames, fps=30.0, scale=1.0, yaw=0.0, pitch=0.0, hips=None, vis=1.0, noise=0.0, seed=0,
-           size=(1080, 1920)):
+           size=(1080, 1920), hands=False):
     """Landmarks of a person performing `euler_frames` (a list of {bone: degrees} dicts), seen by an
     orthographic camera: 1 m = 540 px, image centre at the hips' rest position. `yaw` turns the person about the
     vertical (degrees), `pitch` tilts the camera about its X axis, `hips` is an (n, 3) character-space
-    displacement of the hips (sway, travel, height), `noise` adds white jitter (meters) to every point."""
+    displacement of the hips (sway, travel, height), `noise` adds white jitter (meters) to every point, `hands`
+    also writes the hand landmarks (finger bone angles come from the same euler dicts)."""
     n = len(euler_frames)
     rng = np.random.default_rng(seed)
     world = np.zeros((n, 33, 3))
     image = np.zeros((n, 33, 3))
+    hand_pts = np.zeros((n, 2, 21, 3)) if hands else None
     hips = np.zeros((n, 3)) if hips is None else np.asarray(hips, float)
     turn, tilt = rot_y(yaw), rot_x(pitch)
     for t in range(n):
@@ -201,13 +227,17 @@ def motion(euler_frames, fps=30.0, scale=1.0, yaw=0.0, pitch=0.0, hips=None, vis
         centre = (lmpts[23] + lmpts[24]) / 2
         local = (lmpts - centre) @ turn.T @ tilt.T
         world[t] = local + rng.normal(0, noise, local.shape) if noise else local
+        if hands:
+            hp = char_to_landmark(skeleton_hands(euler_frames[t], hips[t], scale))
+            hand_pts[t] = (hp - centre) @ turn.T @ tilt.T
         absolute = char_to_landmark(pts) @ tilt.T
         image[t, :, 0] = (size[0] / 2 + absolute[:, 0] * 540) / size[0]
         image[t, :, 1] = (size[1] / 2 - absolute[:, 1] * 540) / size[1]
         image[t, :, 2] = 0.0
     pose_vis = np.full((n, 33), vis, np.float32) if np.isscalar(vis) else np.asarray(vis, np.float32)
     return Clip(np.arange(n) / fps, world.astype(np.float32), image.astype(np.float32), pose_vis,
-                list(euler_frames), size)
+                list(euler_frames), size, None if hand_pts is None else hand_pts.astype(np.float32),
+                None if hand_pts is None else np.ones((n, 2), np.float32))
 
 
 def lerp_euler(a, b, t):

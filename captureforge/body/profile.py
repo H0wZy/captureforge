@@ -41,6 +41,29 @@ for _side, _sx in (("Left", 1), ("Right", -1)):
         (f"{_side}ToeBase", f"{_side}Foot", False, (0.09 * _sx, -0.20, 0.0), (0.09 * _sx, -0.27, 0.0)),
     ]
 
+# Fingers (optional bones, solved only with hand tracking): MediaPipe Hand landmark indices per finger, and the
+# rest geometry (head offset from the wrist side of the palm, bone lengths, direction) in the T-pose, palm down.
+FINGER_NAMES = ("Thumb", "Index", "Middle", "Ring", "Pinky")
+FINGER_LANDMARKS = {"Thumb": (1, 2, 3, 4), "Index": (5, 6, 7, 8), "Middle": (9, 10, 11, 12),
+                    "Ring": (13, 14, 15, 16), "Pinky": (17, 18, 19, 20)}
+_FINGER_REST = {  # name: (base y, base x, lengths of the three bones, direction in the palm plane)
+    "Thumb": (-0.035, 0.74, (0.035, 0.030, 0.025), (0.6, -0.8)),
+    "Index": (-0.025, 0.80, (0.040, 0.025, 0.020), (1.0, 0.0)),
+    "Middle": (0.000, 0.80, (0.045, 0.028, 0.022), (1.0, 0.0)),
+    "Ring": (0.020, 0.80, (0.040, 0.026, 0.020), (1.0, 0.0)),
+    "Pinky": (0.038, 0.79, (0.032, 0.020, 0.018), (1.0, 0.0)),
+}
+for _side, _sx in (("Left", 1), ("Right", -1)):
+    for _finger in FINGER_NAMES:
+        _y, _x, _lens, (_dx, _dy) = _FINGER_REST[_finger]
+        _d = np.array([_dx, _dy, 0.0]) / np.hypot(_dx, _dy)
+        _head, _parent = np.array([_x * _sx, _y, 1.40]), f"{_side}Hand"
+        for _k, _len in enumerate(_lens, 1):
+            _tail = _head + _d * np.array([_sx, 1, 1]) * _len
+            _REST.append((f"{_side}Hand{_finger}{_k}", _parent, False, tuple(_head), tuple(_tail)))
+            _head, _parent = _tail, f"{_side}Hand{_finger}{_k}"
+FINGER_BONES = tuple(f"{side}Hand{f}{k}" for side in ("Left", "Right") for f in FINGER_NAMES for k in (1, 2, 3))
+
 BONES = tuple(Bone(n, p, r) for n, p, r, _, _ in _REST)
 NAMES = tuple(b.name for b in BONES)
 INDEX = {n: i for i, n in enumerate(NAMES)}
@@ -113,6 +136,8 @@ FACE_REST = {"ear": (0.075, 0.0, 0.10), "nose": (0.0, -0.10, 0.06)}
 # Euler XYZ ranges in degrees in the bone's rest frame: bone -> (lo, hi). Bones left out are unlimited.
 # Elbows and knees are hinges that cannot bend backwards; the rest are wide guards against solver flips.
 LIMITS = {
+    **{f"{side}Hand{f}{k}": ((-110, -30, -30), (20, 30, 30)) for side in ("Left", "Right")
+       for f in ("Index", "Middle", "Ring", "Pinky") for k in (1, 2, 3)},
     "Spine": ((-60, -45, -45), (60, 45, 45)),
     "Spine1": ((-60, -45, -45), (60, 45, 45)),
     "Spine2": ((-60, -45, -45), (60, 45, 45)),

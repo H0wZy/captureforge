@@ -132,6 +132,58 @@ def test_strictly_increasing_timestamps():
     assert (np.diff(t) > 0).all() and t[0] == 0 and abs(t[-1] - 0.1) < 1e-6
 
 
+# ------------------------------------------------------------------ hands (optional)
+
+def test_hands_model_argument_and_the_hand_fields_of_the_writer():
+    a = ptl.build_parser().parse_args(["v.mp4", "-o", "o.npz", "--pose-model", "p.task", "--hands-model", "h.task"])
+    assert a.hands_model == "h.task"
+    rng = np.random.default_rng(4)
+    rec = ptl.Recorder()
+    for i in range(6):
+        hw = np.full((2, 21, 3), np.nan)
+        hv = np.zeros(2)
+        if i != 2:
+            hw[0], hv[0] = rng.normal(size=(21, 3)), 1.0
+        rec.add(i / 30.0, rng.normal(size=(33, 3)), rng.uniform(size=(33, 3)), rng.uniform(size=33), hw, hv)
+    path = os.path.join(TMP, "hands.npz")
+    rec.write(path, size=(10, 10), fps_source=30.0, model="m", model_sha256="", variant="heavy", people_seen=1,
+              rotation=0, warnings=[], hands=True)
+    lm = fx.implemented(landmarks.read(path))
+    assert lm.hands_world.shape == (6, 2, 21, 3) and lm.hands_vis.shape == (6, 2) and lm.meta["hands"] is True
+    assert lm.hands_vis[:, 0].tolist() == [1, 1, 0, 1, 1, 1] and (lm.hands_vis[:, 1] == 0).all()
+    assert np.isnan(lm.hands_world[2, 0]).all() and np.isnan(lm.hands_world[:, 1]).all(), "absent hands are NaN"
+    plain = os.path.join(TMP, "nohands.npz")
+    rec.write(plain, size=(10, 10), fps_source=30.0, model="m", model_sha256="", variant="heavy", people_seen=1,
+              rotation=0, warnings=[])
+    again = landmarks.read(plain)
+    assert again.hands_world is None and again.hands_vis is None and again.meta["hands"] is False
+
+
+def test_hands_go_to_the_nearer_pose_wrist():
+    from types import SimpleNamespace as NS
+
+    def hand(x, y, z0):
+        img = [NS(x=x, y=y)] + [NS(x=x + 0.01 * k, y=y) for k in range(1, 21)]
+        world = [NS(x=0.01 * k, y=0.02 * k, z=z0) for k in range(21)]
+        return img, world
+
+    left_img, left_world = hand(0.70, 0.50, 0.1)   # near the left wrist (pose point 15)
+    right_img, right_world = hand(0.30, 0.50, 0.2)  # near the right wrist (pose point 16)
+    far_img, far_world = hand(0.95, 0.05, 0.3)      # a stranger's hand, near neither wrist
+    pose_image = np.zeros((33, 3))
+    pose_image[15, :2], pose_image[16, :2] = (0.70, 0.52), (0.31, 0.50)
+    res = NS(hand_landmarks=[far_img, right_img, left_img], hand_world_landmarks=[far_world, right_world, left_world])
+    hands, vis = np.full((2, 21, 3), np.nan), np.zeros(2)
+    fx.implemented(getattr(ptl, "_assign_hands", None))(res, pose_image, hands, vis)
+    assert vis.tolist() == [1.0, 1.0]
+    assert np.allclose(hands[0, 0], [0.0, 0.0, -0.1]) and np.allclose(hands[1, 0], [0.0, 0.0, -0.2]), "axes converted"
+    assert np.allclose(hands[0, 1], [0.01, -0.02, -0.1])
+    res = NS(hand_landmarks=[far_img], hand_world_landmarks=[far_world])
+    hands, vis = np.full((2, 21, 3), np.nan), np.zeros(2)
+    ptl._assign_hands(res, pose_image, hands, vis)
+    assert vis.tolist() == [0.0, 0.0] and np.isnan(hands).all()
+
+
 # ------------------------------------------------------------------ add-on side runner (video.py)
 
 FAKE = """

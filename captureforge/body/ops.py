@@ -50,7 +50,7 @@ def apply_landmarks(context, path):
     arm, res = _armature(context)
     scene = context.scene
     result = solve.from_file(path, scene.render.fps / scene.render.fps_base, s.keep_source_fps, s.neutral_seconds,
-                             s.keep_travel)
+                             s.keep_travel, s.use_hands)
     warnings = list(result.warnings)
     if res["rest_off"]:
         warnings.append("The armature's rest pose is not a T-pose; the clip is retargeted to its own rest frames.")
@@ -243,6 +243,8 @@ class BODYFORGE_OT_video_to_body(bpy.types.Operator):
         src = _abs(s.video_path)
         python, model, hands = _helper(context)
         _armature(context)  # refuse early, before spending minutes on the video
+        if s.use_hands and not hands:
+            raise ValueError("Hands are on but no hand model is set.\n" + video.SETUP_TEXT)
         out = os.path.splitext(src)[0] + ".landmarks.npz"
         job = video.start(python, model, src, out, hands_model=hands if s.use_hands else None)
         return job, out
