@@ -8,6 +8,18 @@
 
 **Input**: User description: "BodyForge v1: markerless body mocap from phone video. One phone camera, Windows with an RTX 3050, MediaPipe Pose as the default estimator, no SMPL in the default path, retarget to a Mixamo/Unity humanoid with foot lock and smoothing, body plus face from the same video as a stretch goal. First client: a Unity game that needs clips Mixamo lacks (hands-up surrender, a frisk gesture, riding a motorcycle, a dance)." Research: `docs/pt-BR/BODYFORGE-RESEARCH.md`.
 
+## Clarifications
+
+### Session 2026-10-03
+
+Answered by the teammate with the recommended default; no user was blocked. The maintainer should confirm or override.
+
+- Q: Which armature does the solver drive: a bundled rig, or the user's own? -> A: the user's own Mixamo-style armature (bone names with or without the `mixamorig:` prefix, validated first); a "Create reference armature" operator builds a neutral T-pose Mixamo-named armature for users without one and for tests.
+- Q: Is the hips world translation estimated, or only the pose? -> A: hips height and local sway are keyed; horizontal travel is dropped by default ("In place" is on) and can be kept with a checkbox; no camera-motion or world-trajectory recovery in v1.
+- Q: Which frame rate does the clip get? -> A: resampled to the scene frame rate (30 fps default) from the real timestamps; an option keeps the source rate (for example 60 fps dance footage).
+- Q: Which pose model quality does the helper use by default? -> A: the most accurate MediaPipe Pose variant (heavy) because the work is offline, with a lite fallback chosen automatically when the machine is too slow; the user downloads the model file on an explicit click and the destination URL is shown.
+- Q: Who creates the helper environment? -> A: the extension, with an "Install helper" button that creates one venv shared with FaceForge and shows what it will download first (Constitution II and the Technical Constraints); a manual-setup text stays as fallback.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Video to a humanoid clip in one click (Priority: P1)
@@ -176,17 +188,23 @@ frame range and frame rate.
 ### Functional Requirements
 
 - **FR-001**: The system MUST turn a video file recorded by any phone or webcam into an animation action on a
-  Mixamo/Unity-style humanoid armature, without requiring an iPhone, depth sensor or LiDAR.
+  Mixamo/Unity-style humanoid armature, resampled to the scene frame rate (or kept at the source rate on request),
+  without requiring an iPhone, depth sensor or LiDAR. A "Create reference armature" action MUST build a
+  Mixamo-named T-pose armature for users who have none.
 - **FR-002**: The system MUST work from one camera.
 - **FR-003**: The default estimator MUST be MediaPipe Pose (and Hands when enabled), run in an external helper
   process; no SMPL, SMPL-X, AMASS or other non-commercial weights may be required by the default path.
-- **FR-004**: The add-on MUST keep working, with a clear setup message, when the helper is not installed.
+- **FR-004**: The add-on MUST keep working, with a clear setup message, when the helper is not installed. An
+  "Install helper" action MUST create the helper environment (shared with FaceForge), show what it will download
+  and from where before doing it, and need no admin rights.
 - **FR-005**: The helper MUST write a documented landmark file (pose, optional hands, confidence per point, real
   frame timestamps) that the add-on reads; the add-on never imports the estimator.
 - **FR-006**: The system MUST measure bone lengths, the up direction and the floor level from a neutral pose at
   the start of the clip, and MUST fall back to the rig's standard proportions with a warning when there is none.
 - **FR-007**: The solver MUST compute local bone rotations for the fixed Mixamo/Unity humanoid profile (the 15
-  required humanoid bones plus the optional spine, neck, toe and finger bones) and the hips translation.
+  required humanoid bones plus the optional spine, neck, toe and finger bones) on the user's armature, accepting
+  bone names with or without the `mixamorig:` prefix, and the hips height and sway. Horizontal travel is dropped
+  unless the user opts to keep it.
 - **FR-008**: The system MUST offer smoothing with a causal mode for preview and a zero-phase mode for the final
   result, applied to rotations in a way that avoids Euler artifacts.
 - **FR-009**: The system MUST offer heuristic foot contact detection and a foot lock that removes sliding on
