@@ -1,10 +1,13 @@
 """Video -> mocap CSV by running helpers/video_to_csv.py in a separate Python (MediaPipe + OpenCV live
 there, never inside Blender). Plain subprocess; no bpy."""
 
+import json
 import os
 import subprocess
 
-SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "helpers", "video_to_csv.py")
+HELPERS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "helpers")
+SCRIPT = os.path.join(HELPERS, "video_to_csv.py")
+LANDMARKS_SCRIPT = os.path.join(HELPERS, "face_landmarks.py")
 MODEL_URL = ("https://storage.googleapis.com/mediapipe-models/face_landmarker/"
              "face_landmarker/float16/1/face_landmarker.task")
 
@@ -34,6 +37,29 @@ def run(python, model, video, out_csv, smooth=0.3, neutral_seconds=2.0, gain=1.0
         raise ValueError(f"Video not found: {video}")
     cmd = [python, script or SCRIPT, video, "-o", out_csv, "--model", model, "--smooth", str(smooth),
            "--neutral-seconds", str(neutral_seconds), "--gain", str(gain)]
+    last = _exec(cmd, python, timeout)
+    if not os.path.isfile(out_csv):
+        raise ValueError("The helper finished but wrote no CSV")
+    return last
+
+
+def landmarks(python, model, image, script=None, timeout=None):
+    """Run helpers/face_landmarks.py on one image. Returns {"width", "height", "landmarks": [[x, y, z]]}
+    with normalized coordinates (x right, y down, origin top-left)."""
+    check_setup(python, model)
+    if not os.path.isfile(image):
+        raise ValueError(f"Image not found: {image}")
+    out = image + ".landmarks.json"
+    _exec([python, script or LANDMARKS_SCRIPT, image, "-o", out, "--model", model], python, timeout)
+    try:
+        with open(out, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError) as e:
+        raise ValueError(f"The helper wrote no readable landmarks: {e}") from e
+
+
+def _exec(cmd, python, timeout):
+    """Run a helper command; ValueError with its last error lines (plus setup help) on failure."""
     try:
         p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
@@ -45,6 +71,4 @@ def run(python, model, video, out_csv, smooth=0.3, neutral_seconds=2.0, gain=1.0
         if "missing package" in msg or "No module named" in msg:
             msg += f"\n{SETUP_TEXT}"
         raise ValueError(msg)
-    if not os.path.isfile(out_csv):
-        raise ValueError("The helper finished but wrote no CSV")
     return (p.stdout.strip().splitlines() or [""])[-1]

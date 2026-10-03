@@ -5,7 +5,7 @@ import tempfile
 
 import bpy
 
-from . import bake, markers, mocap, presets, quality, sheet, split, video
+from . import autofit, bake, markers, mocap, presets, quality, sheet, split, video
 from .ui import ADDON_ID
 
 
@@ -209,6 +209,26 @@ class FACEFORGE_OT_video_to_face(_Op):
         return f"{info}. {_import_csv(context, out)}"
 
 
+class FACEFORGE_OT_auto_rig(_Op):
+    bl_idname = "faceforge.auto_rig"
+    bl_label = "Auto rig from face"
+    bl_description = ("Render the active mesh (the head) from the front, find the face with MediaPipe and build a rig; "
+                      "other selected meshes (eyes, teeth, tongue) are bound to it")
+
+    @classmethod
+    def poll(cls, context):
+        return context.object is not None and context.object.type == "MESH"
+
+    def run(self, context):
+        s = context.scene.faceforge
+        head = context.object
+        extras = [o for o in context.selected_objects if o.type == "MESH" and o != head]
+        python = bpy.path.abspath(_pref(context, "python_path", "FACEFORGE_PYTHON"))
+        model = bpy.path.abspath(_pref(context, "model_path", "FACEFORGE_MODEL"))
+        arm = autofit.fit(context.scene, head, extras, python, model, s.fit_mode, s.fit_size)
+        return f"{arm.name}: {len(arm.data.bones)} bones"
+
+
 class FACEFORGE_OT_setup_help(bpy.types.Operator):
     bl_idname = "faceforge.setup_help"
     bl_label = "Setup instructions"
@@ -285,6 +305,6 @@ classes = (
     FACEFORGE_OT_create_markers, FACEFORGE_OT_key_pose, FACEFORGE_OT_make_target,
     FACEFORGE_OT_pair_add, FACEFORGE_OT_pair_remove, FACEFORGE_OT_bake,
     FACEFORGE_OT_reset_keys, FACEFORGE_OT_split_lr, FACEFORGE_OT_split_all,
-    FACEFORGE_OT_import_csv, FACEFORGE_OT_video_to_face, FACEFORGE_OT_setup_help,
+    FACEFORGE_OT_import_csv, FACEFORGE_OT_video_to_face, FACEFORGE_OT_setup_help, FACEFORGE_OT_auto_rig,
     FACEFORGE_OT_inspect, FACEFORGE_OT_heatmap, FACEFORGE_OT_render_sheet,
 )

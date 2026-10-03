@@ -36,7 +36,7 @@ very welcome.
   in real time and can record into an action.
 - **Quality inspector.** Per-key report (empty keys, max delta, left/right symmetry error, mesh-inside-mesh
   checks, flipped normals, crushed triangles), a delta heatmap as a color attribute, and a txt/json report.
-- **Auto rig fit** *(coming in v1)*. Renders the head, finds the face landmarks with MediaPipe, and places a lean face rig
+- **Auto rig fit.** Renders the head, finds the face landmarks with MediaPipe, and places a lean face rig
   (jaw, eyes, lids, brows, mouth, cheeks, tongue) with automatic weights, or fits a Rigify face metarig.
 - **Review sheet.** A PNG grid with the neutral face and every shape, labelled.
 - **Headless friendly.** Every feature is a plain Python function that takes explicit objects, so scripts
@@ -60,7 +60,7 @@ very welcome.
 
 ## Quickstart
 
-1. **Rig temporarily.** Rig the face (Rigify face works well, or use the auto rig fit). Head, eyes, teeth and
+1. **Rig temporarily.** Rig the face (Rigify face works well, or let `Auto rig from face` build one, see below). Head, eyes, teeth and
    tongue in the same rig. The rest pose must be a real neutral: eyes open, mouth closed and relaxed.
 2. **Markers.** Pick the preset and press `Create markers`: a `neutral` marker at frame 0 and one marker per
    shape from frame 1. This replaces the timeline markers you already had.
@@ -72,6 +72,34 @@ very welcome.
 6. **Test** with a mocap CSV (or a video; the webcam is coming in v1; see below), then `Render review sheet`
    and the quality inspector.
 7. Export the target as FBX or glTF with shape keys (and blendshape normals if your engine wants them).
+
+## Auto rig fit
+
+Rigging the face is the slowest step, so FaceForge can do a first pass for you (panel section 0).
+
+1. Make the **head** the active mesh and select the other face meshes too (eyeballs, teeth, tongue, and any
+   nose or brow pieces that are separate objects).
+2. Set the **Python** and **Model** in the add-on preferences (the same ones `Video to face` uses).
+3. Pick the rig and press `Auto rig from face`. FaceForge renders the selected meshes from the front
+   (orthographic, Workbench), asks MediaPipe Face Landmarker for the 478 face points, drops them on the mesh with
+   a ray along +Y, and builds the rig from those points.
+
+**FaceForge rig** (26 bones): `head`, `jaw`, `eye`, upper/lower `lid`, three `brow` bones, `mouth.corner`, `cheek`
+and three lip bones per side (`lip.T`/`lip.B` plus `.L`/`.R`), the center `lip.T`/`lip.B`, and `tongue` with
+`tongue.tip`. Bones follow the Rigify naming (`.L` is the character's left, +X). The head mesh gets automatic
+weights computed from distance: a falloff around each bone's anchor (lids, brows, lips, corners, cheeks), the jaw
+takes everything below the lip line and in front of the hinge, and `head` keeps the rest, so every vertex sums to
+1. Blender's bone-heat weights are not used: they fail on lids and lips and need UI context. Extra meshes are bound
+rigidly: eyeballs to the nearest eye bone, a mesh named `tongue` to `tongue`, anything below the lip line to
+`jaw`, the rest to `head`. Eye bones sit at the eyeball meshes when they exist.
+
+**Rigify metarig**: choose `Rigify metarig` (needs the Rigify add-on enabled) and FaceForge adds Rigify's face
+sample metarig scaled and placed to match the eyes and chin. Adjust it and generate with Rigify as usual.
+
+Limits: the character must face -Y with its left on +X, a clear front view with visible eyes and mouth, and
+human-like proportions. If MediaPipe finds no face you get a clear error; stylized heads sometimes need the
+eyes and lips modelled before it recognises them. The result is a starting point: check the bones, then pose
+each shape.
 
 ## Quality inspector
 
@@ -121,7 +149,7 @@ You can also run the helper script yourself:
 
 ## Headless, command line and AI agents
 
-The core modules (`bake`, `markers`, `split`, `mocap`, `sheet`, `video`, `quality`; `autofit` and `live` are coming in v1) take explicit objects and do not depend on the UI context, so they run in background Blender:
+The core modules (`bake`, `markers`, `split`, `mocap`, `sheet`, `video`, `quality`, `autofit`; `live` is coming in v1) take explicit objects and do not depend on the UI context, so they run in background Blender:
 
 ```python
 # blender --background rig.blend --python bake_it.py

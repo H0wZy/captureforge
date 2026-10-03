@@ -13,12 +13,13 @@ import traceback
 import bmesh
 import bpy
 import numpy as np
+from mathutils import Vector
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))  # repo root, so "import captureforge" finds the package
 
 import captureforge  # noqa: E402
-from captureforge.face import bake, markers, mocap, presets, quality, sheet, split, video  # noqa: E402
+from captureforge.face import bake, markers, autofit, mocap, presets, quality, sheet, split, video  # noqa: E402
 
 SAMPLE_CSV = os.path.join(HERE, "sample_livelink.csv")
 POSES = ["jawOpen", "eyeBlink", "browInnerUp"]
@@ -636,6 +637,217 @@ def test_15_quality_inspector():
     assert len(q.data.color_attributes) == 0
     bpy.data.objects.remove(q)
     bpy.data.objects.remove(collider)
+
+
+FEATURES = {  # (x, z) on the unit sphere's front, for the character's left (+X); the right side mirrors x
+    "iris": (0.35, 0.2), "eye_out": (0.5, 0.2), "eye_in": (0.2, 0.2), "eye_up": (0.35, 0.27), "eye_low": (0.35, 0.13),
+    "brow_in": (0.2, 0.42), "brow_mid": (0.38, 0.46), "brow_out": (0.55, 0.4),
+    "mouth": (0.28, -0.35), "lip_up": (0.14, -0.31), "lip_low": (0.14, -0.39), "cheek": (0.55, -0.15),
+}
+CENTER = {"lip_up": (0, -0.3), "lip_low": (0, -0.4), "lip_in_up": (0, -0.34), "lip_in_low": (0, -0.36),
+          "chin": (0, -0.8), "top": (0, 0.85)}
+
+
+def synthetic_landmarks(cam):
+    """478 normalized points; the ones FaceForge uses sit at FEATURES projected through the front camera."""
+    lm = np.full((478, 3), 0.5)
+    def put(name, x, z):
+        u, v = (x - cam["cx"]) / cam["scale"] + 0.5, 0.5 - (z - cam["cz"]) / cam["scale"]
+        lm[autofit.LANDMARKS[name]] = (u, v, 0.0)
+    for name, (x, z) in FEATURES.items():
+        for side, sx in (("L", 1), ("R", -1)):
+            put(f"{name}.{side}", sx * x, z)
+    for name, (x, z) in CENTER.items():
+        put(name, x, z)
+    return lm
+
+
+def fit_dummy():
+    """Unit-sphere head, two eyeballs and a lower tooth, rigged from synthetic landmarks."""
+    head = sphere("FitHead", 1.0, (0, 0, 0), u=48, v=24)
+    eyes = [sphere(f"FitEye.{s}", 0.12, (sx * 0.35, -0.8, 0.2), u=12, v=8) for s, sx in (("L", 1), ("R", -1))]
+    tooth = sphere("FitTeeth", 0.1, (0, -0.8, -0.4), u=8, v=6)
+    bpy.context.view_layer.update()
+    cam = autofit.front_camera([head] + eyes + [tooth])
+    arm = autofit.fit_from_landmarks(synthetic_landmarks(cam), cam, head, eyes + [tooth])
+    return arm, head, eyes, tooth, cam
+
+
+def drop(*objs):
+    for o in objs:
+        data = o.data
+        bpy.data.objects.remove(o)
+        (bpy.data.armatures if isinstance(data, bpy.types.Armature) else bpy.data.meshes).remove(data)
+
+
+def vgroup(obj, name):
+    vg = obj.vertex_groups[name]
+    w = np.zeros(len(obj.data.vertices))
+    for v in obj.data.vertices:
+        for g in v.groups:
+            if g.group == vg.index:
+                w[v.index] = g.weight
+    return w
+
+
+def test_16_autofit_rig():
+    arm, head, eyes, tooth, cam = fit_dummy()
+    bones = arm.data.bones
+    for n in ("head", "jaw", "eye.L", "eye.R", "lid.T.L", "lid.B.R", "brow.in.L", "brow.mid.R", "brow.out.L",
+              "mouth.corner.L", "mouth.corner.R", "lip.T", "lip.B", "lip.T.L", "lip.B.R", "cheek.L", "cheek.R",
+              "tongue", "tongue.tip"):
+        assert n in bones, n
+    assert bones["jaw"].parent.name == "head" and bones["lip.B"].parent.name == "jaw"
+    # landmarks went through the raycast onto the sphere surface
+    P = autofit.map_landmarks(synthetic_landmarks(cam), cam, head, bpy.context.evaluated_depsgraph_get())
+    for name, p in P.items():
+        if name not in ("top",):
+            assert abs(p.length - 1.0) < 2e-2 and p.y < 0, (name, tuple(p))
+    assert abs(P["iris.L"].x - 0.35) < 1e-3 and abs(P["iris.L"].z - 0.2) < 1e-3
+    assert abs(P["iris.R"].x + 0.35) < 1e-3
+    # the eyeball mesh decides the eye bone position
+    assert (bones["eye.L"].head_local - Vector((0.35, -0.8, 0.2))).length < 1e-3
+    assert (bones["eye.R"].head_local - Vector((-0.35, -0.8, 0.2))).length < 1e-3
+    assert (bones["jaw"].tail_local - P["chin"]).length < 1e-6
+    # weights: every vertex sums to 1; regions belong to the right bones
+    names = [vg.name for vg in head.vertex_groups]
+    W = {n: vgroup(head, n) for n in names}
+    assert np.allclose(sum(W.values()), 1.0, atol=1e-3), (sum(W.values()).min(), sum(W.values()).max())
+    co = np.array([v.co for v in head.data.vertices])
+    chin = np.argmin(np.linalg.norm(co - [0, -0.6, -0.8], axis=1))
+    fore = np.argmin(np.linalg.norm(co - [0, -0.5, 0.85], axis=1))
+    back = np.argmin(np.linalg.norm(co - [0, 1, 0], axis=1))
+    anchor = np.array(P["brow_mid.L"])
+    assert W["jaw"][chin] > 0.99, W["jaw"][chin]
+    assert W["head"][fore] > 0.99 and W["head"][back] > 0.99 and W["jaw"][fore] == 0
+    top = np.argmax(W["brow.mid.L"])  # the sphere is coarse: the peak is the vertex nearest the anchor
+    assert np.linalg.norm(co[top] - anchor) < 0.1 and W["brow.mid.L"][top] > 0.15 and W["brow.mid.R"][top] == 0
+    left = sum(W[n] for n in names if n.endswith(".L"))
+    right = sum(W[n] for n in names if n.endswith(".R"))
+    assert abs(left.sum() - right.sum()) < 1e-3 * len(co)  # mirrored face, mirrored weights
+    # eyes follow their own bone, the lower tooth follows the jaw
+    assert vgroup(eyes[0], "eye.L").min() == 1.0 and vgroup(eyes[1], "eye.R").min() == 1.0
+    assert vgroup(tooth, "jaw").min() == 1.0
+    assert head.modifiers["Armature"].object == arm
+    # posing: the jaw opens the chin and the tooth, leaves the forehead and the eyes alone
+    pb = arm.pose.bones["jaw"]
+    pb.rotation_mode = "XYZ"
+    pb.rotation_euler = (0.4, 0, 0)
+    bpy.context.view_layer.update()
+    dg = bpy.context.evaluated_depsgraph_get()
+
+    def moved(obj):
+        ev = obj.evaluated_get(dg)
+        mesh = ev.to_mesh()
+        now = np.array([v.co for v in mesh.vertices])
+        ev.to_mesh_clear()
+        return np.linalg.norm(now - np.array([v.co for v in obj.data.vertices]), axis=1)
+
+    d = moved(head)
+    assert d[chin] > 0.1 and d[fore] < 1e-6 and d[back] < 1e-6, (d[chin], d[fore])
+    assert moved(tooth).min() > 0.05 and moved(eyes[0]).max() < 1e-6
+    drop(arm, head, tooth, *eyes)
+
+
+def test_17_autofit_rigify():
+    import contextlib
+    import io
+    try:
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            import addon_utils  # headless enable complains about missing preferences but registers the types
+            try:
+                addon_utils.enable("rigify", default_set=False)
+            except Exception:
+                pass
+            import rigify.rigs.faces.super_face  # noqa: F401
+        assert hasattr(bpy.types.PoseBone, "rigify_type")
+    except (ImportError, AssertionError):
+        print("  (skipped: Rigify is not available)")
+        return
+    head = sphere("FitHead", 1.0, (0, 0, 0), u=48, v=24)
+    eyes = [sphere(f"FitEye.{s}", 0.12, (sx * 0.35, -0.8, 0.2), u=12, v=8) for s, sx in (("L", 1), ("R", -1))]
+    bpy.context.view_layer.update()
+    cam = autofit.front_camera([head] + eyes)
+    arm = autofit.fit_from_landmarks(synthetic_landmarks(cam), cam, head, eyes, mode="RIGIFY")
+    assert len(arm.data.bones) > 80 and arm.data.bones.get("eye.L") and arm.data.bones.get("jaw")
+    world = lambda n, end="head_local": arm.matrix_world @ getattr(arm.data.bones[n], end)  # noqa: E731
+    assert (world("eye.L") - Vector((0.35, -0.8, 0.2))).length < 1e-4, tuple(world("eye.L"))
+    assert (world("eye.R") - Vector((-0.35, -0.8, 0.2))).length < 1e-4
+    assert abs(world("chin").z + 0.8) < 1e-4 and abs(world("chin").x) < 1e-4
+    assert 0.2 < arm.scale.x < 20
+    assert arm.pose.bones["face"].rigify_type == "faces.super_face"
+    drop(arm, head, *eyes)
+
+
+def face_dummy():
+    """A crude but MediaPipe-detectable face from primitives: egg head, eyes, lids, brows, nose, lips.
+    Returns (head, [other parts])."""
+    def prim(name, kind, loc, scale, color):
+        bm = bmesh.new()
+        if kind == "sphere":
+            bmesh.ops.create_uvsphere(bm, u_segments=48, v_segments=24, radius=1.0)
+        else:
+            bmesh.ops.create_cube(bm, size=2.0)
+        me = bpy.data.meshes.new(name)
+        bm.to_mesh(me)
+        bm.free()
+        o = bpy.data.objects.new(name, me)
+        o.location, o.scale, o.color = loc, scale, color
+        bpy.context.scene.collection.objects.link(o)
+        return o
+    head = prim("DHead", "sphere", (0, 0, 0), (0.78, 0.9, 1.0), (0.85, 0.62, 0.5, 1))
+    parts = []
+    for side, sx in (("L", 1), ("R", -1)):
+        parts += [prim(f"DEye.{side}", "sphere", (sx * 0.3, -0.74, 0.2), (0.14, 0.07, 0.085), (1, 1, 1, 1)),
+                  prim(f"DIris.{side}", "sphere", (sx * 0.3, -0.79, 0.2), (0.07, 0.03, 0.07), (0.15, 0.08, 0.05, 1)),
+                  prim(f"DBrow.{side}", "cube", (sx * 0.3, -0.8, 0.40), (0.17, 0.03, 0.025), (0.12, 0.07, 0.05, 1)),
+                  prim(f"DLid.{side}", "cube", (sx * 0.3, -0.76, 0.275), (0.16, 0.02, 0.012), (0.55, 0.35, 0.28, 1))]
+    parts += [prim("DNose", "sphere", (0, -0.9, -0.08), (0.09, 0.14, 0.16), (0.82, 0.58, 0.47, 1)),
+              prim("DMouth", "sphere", (0, -0.82, -0.37), (0.2, 0.05, 0.035), (0.35, 0.05, 0.07, 1)),
+              prim("DLipU", "sphere", (0, -0.82, -0.33), (0.2, 0.06, 0.03), (0.7, 0.3, 0.3, 1)),
+              prim("DLipL", "sphere", (0, -0.82, -0.42), (0.18, 0.06, 0.035), (0.7, 0.3, 0.3, 1))]
+    bpy.context.view_layer.update()
+    return head, parts
+
+
+def test_18_autofit_real_mediapipe():
+    """Optional (FACEFORGE_PYTHON + FACEFORGE_MODEL): render the dummy face, let the real MediaPipe find it,
+    build the rig through the operator."""
+    py, model = os.environ.get("FACEFORGE_PYTHON"), os.environ.get("FACEFORGE_MODEL")
+    if not (py and model and os.path.isfile(model)):
+        print("  (skipped: set FACEFORGE_PYTHON and FACEFORGE_MODEL)")
+        return
+    head, parts = face_dummy()
+    captureforge.register()
+    try:
+        for o in bpy.context.view_layer.objects:
+            o.select_set(False)
+        for o in [head] + parts:
+            o.select_set(True)
+        bpy.context.view_layer.objects.active = head
+        try:
+            bpy.ops.faceforge.auto_rig()
+        except RuntimeError as e:
+            assert "no face detected" in str(e), e
+            print("  (skipped: MediaPipe found no face in the dummy render)")
+            return
+    finally:
+        captureforge.unregister()
+    arm = next(o for o in bpy.data.objects if o.type == "ARMATURE" and "lid.T.L" in o.data.bones)
+    bones = arm.data.bones
+    assert len(bones) == 26 and "jaw" in bones and "lid.T.L" in bones, (arm.name, len(bones), [b.name for b in bones])
+    assert (bones["eye.L"].head_local - Vector((0.3, -0.79, 0.2))).length < 0.1, tuple(bones["eye.L"].head_local)
+    assert bones["eye.L"].head_local.x > 0 > bones["eye.R"].head_local.x  # left is +X
+    assert bones["jaw"].tail_local.z < -0.6 and abs(bones["jaw"].tail_local.x) < 0.15
+    assert -0.5 < bones["mouth.corner.L"].head_local.z < -0.25 and bones["mouth.corner.L"].head_local.x > 0
+    names = {vg.name for vg in head.vertex_groups}
+    assert {"head", "jaw", "brow.mid.L", "lid.T.R"} <= names
+    assert vgroup(bpy.data.objects["DIris.L"], "eye.L").min() == 1.0
+    assert vgroup(bpy.data.objects["DNose"], "head").min() == 1.0
+    assert vgroup(bpy.data.objects["DMouth"], "jaw").min() == 1.0
+    drop(arm)
+    for o in [head] + parts:
+        drop(o)
 
 
 TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_")]

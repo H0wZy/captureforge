@@ -38,7 +38,7 @@ aprendendo como eu. Issues, ideias e pull requests são muito bem-vindos.
 - **Inspetor de qualidade.** Relatório por key (keys vazias, delta máximo, erro de simetria esquerda/direita,
   malha dentro de malha, normais invertidas, triângulos esmagados), mapa de calor do delta como atributo de
   cor e relatório em txt/json.
-- **Auto rig fit** *(chega na v1)*. Renderiza a cabeça, acha os pontos do rosto com o MediaPipe e posiciona um rig facial
+- **Auto rig fit.** Renderiza a cabeça, acha os pontos do rosto com o MediaPipe e posiciona um rig facial
   enxuto (mandíbula, olhos, pálpebras, sobrancelhas, boca, bochechas, língua) com pesos automáticos, ou
   ajusta um metarig facial do Rigify.
 - **Review sheet.** Uma grade PNG com o rosto neutro e cada shape, com legenda.
@@ -63,7 +63,7 @@ aprendendo como eu. Issues, ideias e pull requests são muito bem-vindos.
 
 ## Começo rápido
 
-1. **Rig temporário.** Rigue o rosto (Rigify face funciona bem, ou use o auto rig fit). Cabeça, olhos,
+1. **Rig temporário.** Rigue o rosto (Rigify face funciona bem, ou deixe o `Auto rig from face` montar um, veja abaixo). Cabeça, olhos,
    dentes e língua no mesmo rig. A pose de descanso tem de ser um neutro de verdade: olhos abertos, boca
    fechada e relaxada.
 2. **Marcadores.** Escolha o preset e clique em `Create markers`: um marcador `neutral` no frame 0 e um por
@@ -76,6 +76,36 @@ aprendendo como eu. Issues, ideias e pull requests são muito bem-vindos.
 6. **Teste** com um CSV de mocap (ou um vídeo; a webcam chega na v1; veja abaixo), depois `Render review sheet`
    e o inspetor de qualidade.
 7. Exporte o alvo em FBX ou glTF com shape keys (e normais de blendshape se a engine pedir).
+
+## Auto rig fit
+
+Rigar o rosto é a etapa mais lenta, então o FaceForge pode fazer uma primeira passada (seção 0 do painel).
+
+1. Deixe a **cabeça** como malha ativa e selecione também as outras malhas do rosto (globos oculares, dentes,
+   língua e peças de nariz ou sobrancelha que sejam objetos separados).
+2. Defina o **Python** e o **Model** nas preferências do add-on (os mesmos do `Video to face`).
+3. Escolha o rig e clique em `Auto rig from face`. O FaceForge renderiza as malhas selecionadas de frente
+   (ortográfica, Workbench), pede ao MediaPipe Face Landmarker os 478 pontos do rosto, projeta os pontos na
+   malha com um raio ao longo de +Y e monta o rig a partir deles.
+
+**Rig FaceForge** (26 ossos): `head`, `jaw`, e por lado `eye`, `lid` superior e inferior, três `brow`,
+`mouth.corner`, `cheek` e três ossos de lábio (`lip.T`/`lip.B` mais `.L`/`.R`), os centrais `lip.T`/`lip.B`, e
+`tongue` com `tongue.tip`. Os nomes seguem o Rigify (`.L` é a esquerda do personagem, +X). A malha da cabeça
+recebe pesos automáticos calculados por distância: queda ao redor da âncora de cada osso (pálpebras,
+sobrancelhas, lábios, cantos, bochechas), a mandíbula pega tudo abaixo da linha dos lábios e à frente da
+articulação, e `head` fica com o resto, então cada vértice soma 1. Os pesos por bone heat do Blender não são
+usados: falham em pálpebras e lábios e precisam de contexto de interface. Malhas extras são presas de forma
+rígida: globos oculares ao osso do olho mais próximo, uma malha chamada `tongue` ao osso `tongue`, o que estiver
+abaixo da linha dos lábios ao `jaw`, o resto ao `head`. Os ossos dos olhos ficam nos globos quando eles existem.
+
+**Metarig do Rigify**: escolha `Rigify metarig` (precisa do add-on Rigify ligado) e o FaceForge adiciona o
+metarig facial de exemplo do Rigify escalado e posicionado nos olhos e no queixo. Ajuste e gere com o Rigify
+como de costume.
+
+Limites: o personagem precisa olhar para -Y com a esquerda em +X, vista frontal clara com olhos e boca
+visíveis e proporções parecidas com humanas. Se o MediaPipe não achar rosto, vem um erro claro; cabeças
+estilizadas às vezes precisam de olhos e lábios modelados para serem reconhecidas. O resultado é um ponto de
+partida: confira os ossos e depois pose cada shape.
 
 ## Inspetor de qualidade
 
@@ -126,7 +156,7 @@ Também dá para rodar o script auxiliar na mão:
 
 ## Headless, linha de comando e agentes de IA
 
-Os módulos de núcleo (`bake`, `markers`, `split`, `mocap`, `sheet`, `video`, `quality`; `autofit` e `live` chegam na v1)
+Os módulos de núcleo (`bake`, `markers`, `split`, `mocap`, `sheet`, `video`, `quality`, `autofit`; `live` chega na v1)
 recebem objetos explícitos e não dependem do contexto da interface, então rodam no Blender em segundo plano:
 
 ```python

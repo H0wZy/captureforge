@@ -70,6 +70,12 @@ class FFSettings(bpy.types.PropertyGroup):
                            description="Frame rate of the Timecode column (Live Link Face default 60)")
     csv_mapping: StringProperty(name="Rename", description="Optional column=key pairs, comma separated")
     mocap_start_frame: IntProperty(name="Start frame", default=1)
+    fit_mode: EnumProperty(name="Rig", default="FACEFORGE", items=[
+        ("FACEFORGE", "FaceForge rig", "Lean face rig with automatic weights"),
+        ("RIGIFY", "Rigify metarig", "Rigify face metarig fitted to the face (needs the Rigify add-on)"),
+    ])
+    fit_size: IntProperty(name="Render size", default=768, min=256, max=4096,
+                          description="Pixels of the front render MediaPipe looks at")
     video_path: StringProperty(name="Video", subtype="FILE_PATH")
     video_smooth: FloatProperty(name="Smooth", default=0.3, min=0.0, max=1.0,
                                 description="Light smoothing; 0 = off, higher lags the motion")
@@ -116,6 +122,12 @@ class FACEFORGE_PT_main(bpy.types.Panel):
     def draw(self, context):
         s = context.scene.faceforge
         lay = self.layout
+
+        box = lay.box()
+        box.label(text="0. Auto rig (optional)", icon="ARMATURE_DATA")
+        box.prop(s, "fit_mode")
+        box.prop(s, "fit_size")
+        box.operator("faceforge.auto_rig", icon="OUTLINER_OB_ARMATURE")
 
         box = lay.box()
         box.label(text="1. Pose markers", icon="MARKER_HLT")
