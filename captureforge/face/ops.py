@@ -6,6 +6,7 @@ import tempfile
 import bpy
 
 from . import bake, markers, mocap, presets, quality, sheet, split, video
+from .ui import ADDON_ID
 
 
 def preset_names(settings):
@@ -38,7 +39,7 @@ def _import_csv(context, path):
 
 def _pref(context, name, env):
     """Add-on preference `name`, falling back to an environment variable (CI, headless agents)."""
-    addon = context.preferences.addons.get(__package__)
+    addon = context.preferences.addons.get(ADDON_ID)
     return (getattr(addon.preferences, name, "") if addon else "") or os.environ.get(env, "")
 
 

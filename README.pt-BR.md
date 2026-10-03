@@ -1,13 +1,18 @@
-# FaceForge
+# CaptureForge
 
-[English](README.md)
+[English](README.md) | [howzysolutions.com](https://howzysolutions.com)
 
-FaceForge é uma extensão gratuita do Blender que transforma um rig facial posado em **shape keys ARKit 52**
-(ou qualquer lista de nomes sua), prontas para exportar para Unity, Unreal, Godot ou glTF. Também aciona
-essas shape keys a partir de um vídeo ou de uma webcam, para testar um rosto sem iPhone.
+CaptureForge é uma extensão gratuita do Blender para animação guiada por captura, feita como uma suíte de
+módulos que compartilham uma aba na barra lateral (`CaptureForge`):
+
+| Módulo | O que faz | Situação |
+|---|---|---|
+| **FaceForge** | Transforma um rig facial posado em **shape keys ARKit 52** (ou sua lista) e aciona essas keys a partir de um vídeo ou webcam, sem iPhone. | disponível |
+| **BodyForge** | Mocap corporal sem marcadores a partir de 1 a 3 vídeos de celular. | roadmap |
+| **ScanForge** | Scan de rosto e corpo a partir de um vídeo 360 graus. | roadmap |
 
 Licença: GPL-3.0-or-later. Blender 4.4 LTS ou mais novo (desenvolvido no 5.2). Python puro, sem pacotes
-extras dentro do Blender.
+extras dentro do Blender. Tudo abaixo é o FaceForge, o módulo que existe hoje.
 
 ## Por que isso existe
 
@@ -17,7 +22,7 @@ uma, com um parceiro de programação de IA, e estou compartilhando de graça. A
 crescendo rápido; quanto mais ferramentas gratuitas se encaixarem nela, melhor para todo mundo que está
 aprendendo como eu. Issues, ideias e pull requests são muito bem-vindos.
 
-## Recursos
+## Recursos do FaceForge
 
 - **Biblioteca de poses na timeline.** Um marcador por shape (ARKit 52, ARKit simétrico 34, ou seus
   próprios nomes). Posar, `Key pose`, repetir.
@@ -46,15 +51,15 @@ aprendendo como eu. Issues, ideias e pull requests são muito bem-vindos.
 
 1. Gere o zip (precisa do Blender; as aspas e o `&` importam no PowerShell):
    ```
-   & "C:/Program Files/Blender Foundation/Blender 5.2/blender.exe" --command extension build --source-dir faceforge --output-dir dist
+   & "C:/Program Files/Blender Foundation/Blender 5.2/blender.exe" --command extension build --source-dir captureforge --output-dir dist
    ```
-   Sai `dist/faceforge-<versão>.zip`. Ou pegue o zip na página de releases do GitHub quando houver um.
+   Sai `dist/captureforge-<versão>.zip`. Ou pegue o zip na página de releases do GitHub quando houver um.
 2. No Blender: `Edit > Preferences > Get Extensions`, menu `v` no canto, `Install from Disk...`, escolha o
    zip.
-3. Abra a barra lateral na janela 3D (mouse em cima, tecla `N`), aba `FaceForge`.
+3. Abra a barra lateral na janela 3D (mouse em cima, tecla `N`), aba `CaptureForge`, painel `FaceForge`.
 
-**Pelo Get Extensions**: o FaceForge ainda não está em extensions.blender.org. Quando estiver, procure
-`FaceForge` em `Edit > Preferences > Get Extensions` e clique em Install.
+**Pelo Get Extensions**: o CaptureForge ainda não está em extensions.blender.org. Quando estiver, procure
+`CaptureForge` em `Edit > Preferences > Get Extensions` e clique em Install.
 
 ## Começo rápido
 
@@ -103,7 +108,7 @@ renomeação `coluna=key`.
    ```
 2. Baixe o modelo MediaPipe Face Landmarker (uns 3,6 MB) do armazenamento de modelos do Google:
    `https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task`
-3. Em `Edit > Preferences > Add-ons > FaceForge`, defina o **Python** (o python do venv) e o **arquivo do
+3. Em `Edit > Preferences > Add-ons > CaptureForge`, defina o **Python** (o python do venv) e o **arquivo do
    modelo**. A seção `Video to face` do painel tem um botão `Setup instructions` que repete esses passos.
 4. Escolha o vídeo no painel e clique em `Video to face`.
 
@@ -117,7 +122,7 @@ O MediaPipe não produz `tongueOut`, então 51 das 52 shapes são acionadas.
 seguem o seu rosto. `Record` grava o que chega numa action. `Stop` encerra o auxiliar.
 
 Também dá para rodar o script auxiliar na mão:
-`python faceforge/helpers/video_to_csv.py video.mp4 -o out.csv --model face_landmarker.task`.
+`python captureforge/face/helpers/video_to_csv.py video.mp4 -o out.csv --model face_landmarker.task`.
 
 ## Headless, linha de comando e agentes de IA
 
@@ -127,8 +132,8 @@ recebem objetos explícitos e não dependem do contexto da interface, então rod
 ```python
 # blender --background rig.blend --python bake_it.py
 import sys
-sys.path.insert(0, "/caminho/para/faceforge")     # a raiz do repositório
-from faceforge import bake, markers, split, presets
+sys.path.insert(0, "/caminho/para/repo-captureforge")  # a raiz do repositório
+from captureforge.face import bake, markers, split, presets
 import bpy
 
 scene = bpy.context.scene
@@ -159,7 +164,7 @@ O primeiro monta uma cabeça procedural (esfera, armature, olhos, dentes) e impr
 `FaceForge tests: N passed, M failed`, saindo com código diferente de 0 em falha. O GitHub Actions roda o
 mesmo a cada push. Defina `FACEFORGE_PYTHON` (um python com mediapipe e opencv) e `FACEFORGE_MODEL` (o arquivo
 `.task`) para rodar também o teste do auxiliar MediaPipe de verdade; também valem para o `Video to face` quando
-as preferências do add-on estão vazias. Valide o manifesto com `blender --command extension validate faceforge`.
+as preferências do add-on estão vazias. Valide o manifesto com `blender --command extension validate captureforge`.
 
 ## Limites conhecidos
 
@@ -189,7 +194,7 @@ Ideias da v1.1:
 
 ### A família Forge
 
-Dois projetos irmãos futuros, no mesmo espírito (gratuitos, Blender, amigáveis a IA):
+Dois módulos irmãos futuros do CaptureForge, no mesmo espírito (gratuitos, Blender, amigáveis a IA):
 
 - **BodyForge**: mocap corporal sem marcadores a partir de 1 a 3 vídeos de celular (MediaPipe Pose,
   triangulação de várias câmeras, trava de pés, retarget para um humanoide).
@@ -204,7 +209,7 @@ recomendação e um aviso, não um termo de licença. Leia o [POLICY.md](POLICY.
 
 ## Créditos e clean room
 
-O FaceForge foi escrito do zero a partir de documentação pública e da API do Blender: a lista de blendshapes
+O CaptureForge foi escrito do zero a partir de documentação pública e da API do Blender: a lista de blendshapes
 ARKit da Apple, o MediaPipe Face Landmarker do Google, o formato de CSV do Live Link Face como visto em
 importadores abertos e o manual do Blender. Nenhum add-on pago foi baixado, descompilado ou copiado. As
 notas de pesquisa (em português) estão em [`docs/pt-BR`](docs/pt-BR/RESEARCH.md); o design está em

@@ -1,15 +1,16 @@
 # Contributing
 
-Thanks for helping. FaceForge is small on purpose: Python, `bpy`, numpy (bundled with Blender), no frameworks.
+Thanks for helping. CaptureForge is small on purpose: Python, `bpy`, numpy (bundled with Blender), no frameworks.
 
-- **Layout.** FaceForge is the *face* module of what may become a suite (body, scan). Keep it
-  self-contained: its settings live in one `PropertyGroup` (`scene.faceforge`), its panels use the shared
-  `ui.CATEGORY` sidebar tab, and add-on preferences stay in the single `FFPreferences` class. Do not
-  add module-level state that assumes the face is the whole add-on.
+- **Layout.** `captureforge/` is the suite; `captureforge/face/` is the FaceForge module (future modules, body
+  and scan, sit beside it and register from `captureforge/__init__.py`). Keep a module self-contained: its
+  settings live in one `PropertyGroup` (`scene.faceforge`), its panels use the shared `ui.CATEGORY` sidebar tab,
+  and add-on preferences stay in the single `FFPreferences` class. Do not add module-level state that assumes
+  the face is the whole add-on.
 - **Issues first** for anything bigger than a bug fix: say what you want to do and why.
 - **Run the tests** before opening a pull request (see the README). Every new feature needs a headless test in
   `tests/run_tests.py`; pure helpers that need no Blender can go in a plain `tests/test_*.py`.
-- **Keep the core testable.** Functions in `faceforge/*.py` take explicit objects and never read
+- **Keep the core testable.** Functions in `captureforge/face/*.py` take explicit objects and never read
   `bpy.context`; operators in `ops.py` stay thin wrappers.
 - **Code, comments and commit messages in English.** Docs can also get a translation.
 - **Clean room.** Do not copy code or text from paid add-ons (FaceFlex, FaceIt, ...), and do not paste

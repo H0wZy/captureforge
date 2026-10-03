@@ -15,10 +15,10 @@ import bpy
 import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.dirname(HERE))  # repo root, so "import faceforge" finds the package
+sys.path.insert(0, os.path.dirname(HERE))  # repo root, so "import captureforge" finds the package
 
-import faceforge  # noqa: E402
-from faceforge import bake, markers, mocap, presets, quality, sheet, split, video  # noqa: E402
+import captureforge  # noqa: E402
+from captureforge.face import bake, markers, mocap, presets, quality, sheet, split, video  # noqa: E402
 
 SAMPLE_CSV = os.path.join(HERE, "sample_livelink.csv")
 POSES = ["jawOpen", "eyeBlink", "browInnerUp"]
@@ -316,8 +316,10 @@ def test_08_render_sheet():
 
 def test_09_operators():
     scene = S["scene"]
-    faceforge.register()
+    captureforge.register()
     try:
+        from captureforge.face import ui
+        assert ui.ADDON_ID == "captureforge" and ui.FFPreferences.bl_idname == "captureforge"
         s = scene.faceforge
         s.preset, s.custom_names = "CUSTOM", ", ".join(POSES)
         s.start_frame, s.neutral_frame = 1, 0
@@ -341,7 +343,7 @@ def test_09_operators():
         s.pairs.clear()
         bpy.data.objects.remove(target)
     finally:
-        faceforge.unregister()
+        captureforge.unregister()
     assert not hasattr(scene, "faceforge")
 
 
@@ -473,7 +475,7 @@ def test_13_video_operator():
     os.environ["FACEFORGE_PYTHON"], os.environ["FACEFORGE_MODEL"] = blender_python(), S["model"]
     old_script = video.SCRIPT
     video.SCRIPT = S["stub"]
-    faceforge.register()
+    captureforge.register()
     try:
         s = scene.faceforge
         pair = s.pairs.add()
@@ -495,7 +497,7 @@ def test_13_video_operator():
             raise AssertionError("expected an error report")
     finally:
         s.pairs.clear()
-        faceforge.unregister()
+        captureforge.unregister()
         video.SCRIPT = old_script
         for k, v in saved.items():
             os.environ.pop(k, None)
@@ -611,7 +613,7 @@ def test_15_quality_inspector():
     assert np.allclose(col[moved][:, :3], [1, 0, 0], atol=1e-4) and np.allclose(col[~moved][:, :3], [0, 0, 1], atol=1e-4)
     assert q.data.color_attributes.active_color.name == "FF_delta_smileLeft"
     # operators
-    faceforge.register()
+    captureforge.register()
     try:
         s = scene.faceforge
         s.pairs.clear()
@@ -629,7 +631,7 @@ def test_15_quality_inspector():
         s.pairs.clear()
         s.quality_collider = None
     finally:
-        faceforge.unregister()
+        captureforge.unregister()
     quality.clear_heatmaps(q)
     assert len(q.data.color_attributes) == 0
     bpy.data.objects.remove(q)

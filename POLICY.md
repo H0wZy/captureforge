@@ -1,6 +1,6 @@
 # Responsible use
 
-FaceForge, and the tools that may join it, can capture, rebuild and animate a human face. That power can be
+CaptureForge (FaceForge today, BodyForge and ScanForge later) can capture, rebuild and animate a human face. That power can be
 misused, so please read this before using it on a real person.
 
 **Strong recommendation, and a warning:**
@@ -13,6 +13,6 @@ misused, so please read this before using it on a real person.
 - Keep face videos and scans of other people only as long as you have a purpose and permission for them.
 - Your own face, consenting people, and fictional or stylized characters are the intended uses.
 
-FaceForge is free software under the GPL-3.0-or-later license, provided without warranty. The maintainer and the
+CaptureForge is free software under the GPL-3.0-or-later license, provided without warranty. The maintainer and the
 contributors are **not responsible** for how it is used. This policy is guidance and a request, not an
 additional license restriction: legal responsibility for any misuse lies with the person who commits it.

@@ -1,13 +1,18 @@
-# FaceForge
+# CaptureForge
 
-[Português](README.pt-BR.md)
+[Português](README.pt-BR.md) | [howzysolutions.com](https://howzysolutions.com)
 
-FaceForge is a free Blender extension that turns a posed facial rig into **ARKit 52 shape keys** (or any
-list of names you choose), ready to export to Unity, Unreal, Godot or glTF. It also drives those shape keys
-from a video or a webcam, so you can test a face without an iPhone.
+CaptureForge is a free Blender extension for capture-driven animation, built as a suite of modules that share
+one sidebar tab (`CaptureForge`):
+
+| Module | What it does | Status |
+|---|---|---|
+| **FaceForge** | Turns a posed facial rig into **ARKit 52 shape keys** (or your own list) and drives them from a video or a webcam, no iPhone needed. | available |
+| **BodyForge** | Markerless body mocap from 1 to 3 phone videos. | roadmap |
+| **ScanForge** | Face and body scan from a 360-degree video. | roadmap |
 
 License: GPL-3.0-or-later. Blender 4.4 LTS or newer (developed on 5.2). Pure Python, no extra packages inside
-Blender.
+Blender. Everything below is FaceForge, the module that exists today.
 
 ## Why this exists
 
@@ -17,7 +22,7 @@ pair-programmer, and I am sharing it for free. AI-assisted creation is growing f
 that fit into it, the better for everybody who is learning like me. Issues, ideas and pull requests are
 very welcome.
 
-## Features
+## FaceForge features
 
 - **Pose library on the timeline.** One marker per shape (ARKit 52, ARKit symmetric 34, or your own
   names). Pose, `Key pose`, repeat.
@@ -43,15 +48,15 @@ very welcome.
 
 1. Build it (needs Blender; the quotes and the `&` matter in PowerShell):
    ```
-   & "C:/Program Files/Blender Foundation/Blender 5.2/blender.exe" --command extension build --source-dir faceforge --output-dir dist
+   & "C:/Program Files/Blender Foundation/Blender 5.2/blender.exe" --command extension build --source-dir captureforge --output-dir dist
    ```
-   This writes `dist/faceforge-<version>.zip`. Or grab the zip from the GitHub releases page when one exists.
+   This writes `dist/captureforge-<version>.zip`. Or grab the zip from the GitHub releases page when one exists.
 2. In Blender: `Edit > Preferences > Get Extensions`, the `v` menu in the corner, `Install from Disk...`,
    choose the zip.
-3. Open the sidebar in the 3D viewport (hover, press `N`), tab `FaceForge`.
+3. Open the sidebar in the 3D viewport (hover, press `N`), tab `CaptureForge`, panel `FaceForge`.
 
-**From Get Extensions**: FaceForge is not listed on extensions.blender.org yet. Once it is, search for
-`FaceForge` in `Edit > Preferences > Get Extensions` and press Install.
+**From Get Extensions**: CaptureForge is not listed on extensions.blender.org yet. Once it is, search for
+`CaptureForge` in `Edit > Preferences > Get Extensions` and press Install.
 
 ## Quickstart
 
@@ -98,7 +103,7 @@ spelling as the shape keys (`eyeBlinkLeft`, ...). Column names are matched case-
    ```
 2. Download the MediaPipe Face Landmarker model (about 3.6 MB) from Google's model storage:
    `https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task`
-3. In `Edit > Preferences > Add-ons > FaceForge`, set the **Python** (the venv's python) and the **model
+3. In `Edit > Preferences > Add-ons > CaptureForge`, set the **Python** (the venv's python) and the **model
    file**. The panel's `Video to face` section has a `Setup instructions` button that repeats these steps.
 4. Pick the video in the panel and press `Video to face`.
 
@@ -112,7 +117,7 @@ MediaPipe does not produce `tongueOut`, so 51 of the 52 shapes are driven.
 your face. `Record` keys what it receives into an action. `Stop` ends the helper.
 
 You can also run the helper script yourself:
-`python faceforge/helpers/video_to_csv.py video.mp4 -o out.csv --model face_landmarker.task`.
+`python captureforge/face/helpers/video_to_csv.py video.mp4 -o out.csv --model face_landmarker.task`.
 
 ## Headless, command line and AI agents
 
@@ -121,8 +126,8 @@ The core modules (`bake`, `markers`, `split`, `mocap`, `sheet`, `video`, `qualit
 ```python
 # blender --background rig.blend --python bake_it.py
 import sys
-sys.path.insert(0, "/path/to/faceforge")          # the repository root
-from faceforge import bake, markers, split, presets
+sys.path.insert(0, "/path/to/captureforge-repo")  # the repository root
+from captureforge.face import bake, markers, split, presets
 import bpy
 
 scene = bpy.context.scene
@@ -153,7 +158,7 @@ The first builds a procedural head (sphere, armature, eyes, teeth) and prints `F
 M failed`, exiting non-zero on failure. GitHub Actions runs the same on every push. Set `FACEFORGE_PYTHON` (a python with mediapipe and opencv) and
 `FACEFORGE_MODEL` (the `.task` file) to also run the test that exercises the real MediaPipe helper; they are also
 used by `Video to face` when the add-on preferences are empty.
-Validate the manifest with `blender --command extension validate faceforge`.
+Validate the manifest with `blender --command extension validate captureforge`.
 
 ## Known limits
 
@@ -181,7 +186,7 @@ v1.1 ideas:
 
 ### The Forge family
 
-Two future sister projects, in the same spirit (free, Blender, AI-friendly):
+Two future sister modules of CaptureForge, in the same spirit (free, Blender, AI-friendly):
 
 - **BodyForge**: markerless body mocap from 1 to 3 phone videos (MediaPipe Pose, multi-camera
   triangulation, foot lock, retarget to a humanoid).
@@ -196,7 +201,7 @@ recommendation and a warning, not a license term. Read [POLICY.md](POLICY.md).
 
 ## Credits and clean room
 
-FaceForge is written from scratch from public documentation and the Blender API: Apple's ARKit blendshape
+CaptureForge is written from scratch from public documentation and the Blender API: Apple's ARKit blendshape
 list, Google's MediaPipe Face Landmarker, the Live Link Face CSV format as seen in open importers, and the
 Blender manual. No paid add-on was downloaded, decompiled or copied. Research notes (in Portuguese) are in
 [`docs/pt-BR`](docs/pt-BR/RESEARCH.md); the design is in [`docs/pt-BR/DESIGN.md`](docs/pt-BR/DESIGN.md).

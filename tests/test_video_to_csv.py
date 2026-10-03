@@ -9,7 +9,7 @@ import types
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-FF = ROOT / "faceforge"
+FF = ROOT / "captureforge" / "face"
 sys.path.insert(0, str(FF / "helpers"))
 
 import video_to_csv as v  # noqa: E402

@@ -1,4 +1,4 @@
-"""FaceForge: bake a posed facial rig into ARKit (or custom) shape keys.
+"""FaceForge, the face module of CaptureForge: bake a posed facial rig into ARKit (or custom) shape keys.
 
 Clean-room implementation; see docs/RESEARCH.md and docs/DESIGN.md.
 """

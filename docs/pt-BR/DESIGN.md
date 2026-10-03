@@ -23,7 +23,7 @@ Studio 90 (lista não pública de forma confiável).
 
 ## 2. Módulos do MVP
 
-Pacote `faceforge/` (extensão Blender ≥ 4.4, Python puro, só `bpy`, `mathutils` e o numpy
+Pacote `captureforge/face/` (extensão Blender ≥ 4.4, Python puro, só `bpy`, `mathutils` e o numpy
 embutido). Funções de núcleo recebem objetos/dados explícitos (sem `context`) para serem testáveis
 headless; operadores são invólucros finos.
 
@@ -99,12 +99,14 @@ imagem crescem de baixo para cima no Blender) e salva PNG; remove câmera, rótu
 ## 4. Layout de arquivos
 
 ```
-faceforge/                   a extensão (o que vai no zip)
-  blender_manifest.toml      id="faceforge", type="add-on", blender_version_min="4.4.0",
+captureforge/                a extensão (o que vai no zip); a suíte
+  blender_manifest.toml      id="captureforge", type="add-on", blender_version_min="4.4.0",
                              license=["SPDX:GPL-3.0-or-later"]
-  __init__.py                register/unregister
-  presets.py  markers.py  bake.py  split.py  mocap.py  sheet.py  ops.py  ui.py
-  helpers/video_to_csv.py    script externo (mediapipe), roda fora do Blender
+  __init__.py                register/unregister dos módulos
+  face/                      módulo FaceForge
+    __init__.py              register/unregister
+    presets.py  markers.py  bake.py  split.py  mocap.py  sheet.py  quality.py  video.py  ops.py  ui.py
+    helpers/video_to_csv.py  script externo (mediapipe), roda fora do Blender
 tests/run_tests.py           runner headless (constrói a cena, roda tudo, asserts, exit code)
 tests/sample_livelink.csv    amostra escrita por nós (cabeçalho de 61 colunas, ~12 linhas a 60 fps)
 docs/pt-BR/                  pesquisa e design (este arquivo e RESEARCH.md)
@@ -112,7 +114,7 @@ README.md  README.pt-BR.md   instalação e uso
 ```
 
 Instalação: `Edit > Preferences > Get Extensions > Install from Disk` com o zip de
-`blender --command extension build --source-dir faceforge`.
+`blender --command extension build --source-dir captureforge`.
 Para os testes, `sys.path.insert(0, "<raiz do repositório>")` + `import faceforge; faceforge.register()` (imports
 relativos dentro do pacote funcionam tanto como `faceforge` quanto como `bl_ext.<repo>.faceforge`).
 
@@ -141,7 +143,7 @@ Source (para testar "o que você vê é o que baka").
 | 8 | `render_sheet(tile=64, columns=3)` com 4 shapes | PNG existe, dimensões `192 × 128` (5 tiles → 2 linhas), câmera/rótulo removidos, `hide_render` e valores de key restaurados |
 | 9 | Registro: `faceforge.register()`; `bpy.ops.faceforge.create_markers()` e `bpy.ops.faceforge.bake()` via `scene.faceforge` | operadores retornam `{'FINISHED'}` e produzem o mesmo resultado do núcleo |
 
-Também: `blender --command extension validate faceforge` sem erros.
+Também: `blender --command extension validate captureforge` sem erros.
 
 ## 6. Roadmap "melhor que o FaceFlex"
 
@@ -162,7 +164,7 @@ Também: `blender --command extension validate faceforge` sem erros.
 8. **Mocap por webcam (sem iPhone).** Quem só tem Android não pode usar o Live Link Face (iPhone). O MediaPipe Face Landmarker (Google,
    gratuito, código aberto) devolve os mesmos 52 scores com nomes ARKit (`eyeBlinkLeft`, …, mais uma
    categoria `_neutral` que o importador ignora) a partir de qualquer webcam ou vídeo de celular. Plano:
-   script externo pequeno (`faceforge/helpers/`, Python + `mediapipe`, fora do add-on para não
+   script externo pequeno (`captureforge/face/helpers/`, Python + `mediapipe`, fora do add-on para não
    trazer dependência ao Blender) que lê um arquivo de vídeo e grava o nosso CSV genérico
    (`time` em segundos + uma coluna por shape). O importador já aceita esse formato (ver nota abaixo).
    Construído: ver o README (51 shapes; `tongueOut` não existe no MediaPipe).

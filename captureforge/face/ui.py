@@ -6,7 +6,9 @@ from bpy.props import (BoolProperty, CollectionProperty, EnumProperty, FloatProp
 
 
 # One sidebar tab for the whole suite: sibling modules (body, scan) put their panels in the same category.
-CATEGORY = "FaceForge"
+CATEGORY = "CaptureForge"
+# The add-on (extension) id: the suite package that contains this module. Preferences live under it.
+ADDON_ID = __package__.rpartition(".")[0]
 
 
 def _is_mesh(self, obj):
@@ -14,7 +16,7 @@ def _is_mesh(self, obj):
 
 
 class FFPreferences(bpy.types.AddonPreferences):
-    bl_idname = __package__
+    bl_idname = ADDON_ID
 
     python_path: StringProperty(
         name="Python", subtype="FILE_PATH",
@@ -106,6 +108,7 @@ class FACEFORGE_UL_pairs(bpy.types.UIList):
 
 class FACEFORGE_PT_main(bpy.types.Panel):
     bl_label = "FaceForge"
+    bl_idname = "FACEFORGE_PT_main"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = CATEGORY
