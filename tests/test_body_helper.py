@@ -132,5 +132,138 @@ def test_strictly_increasing_timestamps():
     assert (np.diff(t) > 0).all() and t[0] == 0 and abs(t[-1] - 0.1) < 1e-6
 
 
+# ------------------------------------------------------------------ add-on side runner (video.py)
+
+FAKE = """
+import json, sys, time
+import numpy as np
+args = sys.argv[1:]
+out = args[args.index("-o") + 1]
+mode = open(args[0]).read().strip()
+if mode == "fail3":
+    sys.exit("error: missing package (mediapipe). Run setup_env.py")
+if mode == "fail5":
+    sys.exit(5)
+if mode == "hang":
+    print(json.dumps({"progress": 0.1, "frame": 3, "frames": 30}), flush=True)
+    time.sleep(60)
+for i in (10, 20, 30):
+    print(json.dumps({"progress": i / 30, "frame": i, "frames": 30}), flush=True)
+np.savez(out, version=1)
+print(json.dumps({"done": True, "frames": 30, "frames_without_person": 1, "path": out}), flush=True)
+"""
+
+
+def fake_setup(mode):
+    script = os.path.join(TMP, "fake_helper.py")
+    open(script, "w").write(FAKE)
+    video = os.path.join(TMP, f"v_{mode}.mp4")
+    open(video, "w").write(mode)
+    model = os.path.join(TMP, "m.task")
+    open(model, "w").write("x")
+    return script, video, model
+
+
+def video_module():
+    fx.pure_import()
+    from captureforge.body import video
+    return video
+
+
+def test_video_check_setup_gives_setup_text():
+    video = fx.implemented(getattr(video_module(), "check_setup", None))
+    for python, model in (("", ""), (sys.executable, os.path.join(TMP, "none.task"))):
+        try:
+            video(python, model)
+        except ValueError as e:
+            assert "Install helper" in str(e) and "pose_landmarker" in str(e), str(e)
+        else:
+            raise AssertionError("expected ValueError")
+    model = os.path.join(TMP, "m.task")
+    open(model, "w").write("x")
+    video(sys.executable, model)
+
+
+def test_video_run_reports_progress_and_returns_the_summary():
+    mod = video_module()
+    script, video, model = fake_setup("ok")
+    out = os.path.join(TMP, "run_ok.npz")
+    seen = []
+    summary = fx.implemented(mod.run(sys.executable, model, video, out, on_progress=seen.append, script=script))
+    assert summary["done"] and summary["frames"] == 30 and summary["frames_without_person"] == 1
+    assert seen[-1] == 1.0 and seen == sorted(seen) and len(seen) >= 2 and os.path.isfile(out)
+
+
+def test_video_run_error_messages():
+    mod = video_module()
+    script, video, model = fake_setup("fail3")
+    out = os.path.join(TMP, "run_fail.npz")
+    try:
+        mod.run(sys.executable, model, video, out, script=script)
+    except ValueError as e:
+        assert "missing package" in str(e) and "Install helper" in str(e), str(e)
+    else:
+        raise AssertionError("expected ValueError")
+    script, video, model = fake_setup("fail5")
+    try:
+        mod.run(sys.executable, model, video, out, script=script)
+    except ValueError as e:
+        assert "No person" in str(e), str(e)
+    else:
+        raise AssertionError("expected ValueError")
+    try:
+        mod.run(sys.executable, model, os.path.join(TMP, "gone.mp4"), out, script=script)
+    except ValueError as e:
+        assert "Video not found" in str(e)
+    else:
+        raise AssertionError("expected ValueError")
+
+
+def test_video_cancel_and_timeout_leave_no_file():
+    import time
+    mod = video_module()
+    script, video, model = fake_setup("hang")
+    out = os.path.join(TMP, "run_hang.npz")
+    job = fx.implemented(getattr(mod, "start", lambda *a, **k: None)(sys.executable, model, video, out, script=script))
+    for _ in range(100):
+        if job.progress > 0:
+            break
+        time.sleep(0.05)
+    assert job.poll() is None and abs(job.progress - 0.1) < 1e-9
+    job.cancel()
+    assert job.finished and job.cancelled and not os.path.exists(out)
+    t = time.time()
+    try:
+        mod.run(sys.executable, model, video, out, script=script, timeout=1.0)
+    except ValueError as e:
+        assert "timed out" in str(e)
+    else:
+        raise AssertionError("expected ValueError")
+    assert time.time() - t < 20 and not os.path.exists(out)
+
+
+def test_video_check_helper_setup_plan_and_system_python():
+    mod = video_module()
+    model = os.path.join(TMP, "m.task")
+    open(model, "w").write("x")
+    assert mod.check_helper(sys.executable, model, modules=("json",)) == "helper ready"
+    try:
+        mod.check_helper(sys.executable, model, modules=("no_such_module_xyz",))
+    except ValueError as e:
+        assert "cannot import" in str(e) and "Install helper" in str(e)
+    else:
+        raise AssertionError("expected ValueError")
+    plan = mod.setup_plan(os.path.join(TMP, "venv"))
+    assert "storage.googleapis.com" in plan and "mediapipe" in plan
+    found = mod.find_system_python()
+    assert found == "" or os.path.isfile(found) or os.path.basename(found), found
+    try:
+        mod.start_setup("", os.path.join(TMP, "venv"))
+    except ValueError as e:
+        assert "python.org" in str(e)
+    else:
+        raise AssertionError("expected ValueError")
+
+
 if __name__ == "__main__":
     fx.run_all(globals())

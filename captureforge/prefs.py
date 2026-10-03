@@ -39,6 +39,9 @@ class CFPreferences(bpy.types.AddonPreferences):
         lay = self.layout
         for name in ("python_path", "model_path", "pose_model", "hand_model"):
             lay.prop(self, name)
+        row = lay.row(align=True)
+        row.operator("bodyforge.install_helper", icon="IMPORT")
+        row.operator("bodyforge.check_helper", icon="CHECKMARK")
         lay.operator("faceforge.setup_help")
 
 

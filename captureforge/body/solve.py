@@ -8,11 +8,13 @@ constraints or Blender context are needed. This is the only module that converts
 (`to_character`).
 """
 
+from collections import namedtuple
 from dataclasses import dataclass, field, replace
 
 import numpy as np
 
 from . import landmarks as lm
+from . import calibrate as calibration
 from . import profile, quat
 from .calibrate import point
 
@@ -210,6 +212,23 @@ def fk(rot, hips_pos, offset=None):
     return G, head
 
 
+def retarget(rot, rest_rot, parent, present):
+    """Local quaternions (m, B, 4) that pose an armature the same way the profile clip `rot` poses the profile rig.
+
+    `rest_rot` (B, 3, 3): each bone's rest frame in armature space (a rolled rig differs from `profile.ROT`);
+    `parent` (B,): the armature's own parent of each bone as a profile index, -1 for none or a non-profile bone;
+    `present` (B,) bool: bones the armature has (the others stay at identity). The pose is carried by the global
+    delta rotations, so any hierarchy and any roll gives the same bone directions and twists."""
+    G, _ = fk(rot, np.zeros((len(rot), 3)))
+    out = np.tile(quat.IDENTITY, (len(rot), B, 1))
+    eye = np.tile(np.eye(3), (len(rot), 1, 1))
+    for i in range(B):
+        if present[i]:
+            gp = G[:, parent[i]] if parent[i] >= 0 else eye
+            out[:, i] = quat.continuity(quat.from_matrix(rest_rot[i].T @ np.swapaxes(gp, -1, -2) @ G[:, i] @ rest_rot[i]))
+    return out
+
+
 # ------------------------------------------------------------------ the solver
 
 def _to_local(G_target, bias):
@@ -284,3 +303,17 @@ def _hips(L, P, calib, keep_travel):
         dx = (hip_img - hip_img[w].mean()) * mpp * calib.scale
         pos[:, :2] += to_character(np.stack([dx, 0 * dx, 0 * dx], axis=-1), calib)[:, :2]
     return pos
+
+
+Result = namedtuple("Result", "clip calib lm warnings")
+
+
+def from_file(path, fps=30.0, keep_source_fps=False, neutral_seconds=1.5, keep_travel=False):
+    """Read, resample, calibrate and solve a landmark file. Returns Result(clip, calib, lm, warnings), where the
+    warnings are plain-text lines for the user (no person for some frames, no neutral pose, estimator notes)."""
+    lm_file = lm.resample(lm.read(path), None if keep_source_fps else fps)
+    calib = calibration.calibrate(lm_file, neutral_seconds)
+    warnings = list(calib.warnings) + list(lm_file.meta.get("warnings", []))
+    for start, end in lm_file.gaps:
+        warnings.append(f"No person found in frames {start} to {end - 1}: the pose is bridged across the gap.")
+    return Result(solve(lm_file, calib, keep_travel), calib, lm_file, warnings)

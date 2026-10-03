@@ -271,5 +271,37 @@ def test_single_frame_flip_is_rejected():
     assert angle_between(G[50, i], Gc[50, i]) < 5, "the one-frame spike must not reach the clip"
 
 
+def test_retarget_to_the_canonical_rest_frames_changes_nothing_and_follows_rolled_rigs():
+    clip, calib, out = solved(fx.hands_up_clip().euler)
+    present = np.ones(len(profile.BONES), bool)
+    same = fx.implemented(solve.retarget(out.rot, profile.ROT, profile.PARENT, present))
+    assert np.allclose(np.abs(np.sum(same * out.rot, axis=-1)), 1, atol=1e-9)
+    # a rig with every bone rolled 40 degrees about its own Y axis: global poses must stay identical
+    roll = fx.euler_matrix((0, 40, 0))
+    rest = np.array([r @ roll for r in profile.ROT])
+    rolled = solve.retarget(out.rot, rest, profile.PARENT, present)
+    from captureforge.body import quat
+    local = quat.to_matrix(rolled)
+    P = np.empty((len(local), len(profile.BONES), 3, 3))
+    for i, p in enumerate(profile.PARENT):  # the rolled rig's own chain: P = P_parent (Rp^T R) B, root: R B
+        P[:, i] = rest[i] @ local[:, i] if p < 0 else P[:, p] @ (rest[p].T @ rest[i]) @ local[:, i]
+    G, _ = solve.fk(out.rot, out.hips_pos)
+    for i in range(len(profile.BONES)):
+        assert angle_between(P[:, i], G[:, i] @ rest[i]).max() < 0.01, profile.NAMES[i]
+
+
+def test_from_file_reads_resamples_calibrates_and_solves():
+    import tempfile
+    clip = fx.hands_up_clip(neutral=100, raise_=30, hold=30, fps=60.0)
+    clip.pose_vis[130:134] = 0.0
+    clip.pose_world[130:134] = np.nan
+    path = clip.save(os.path.join(tempfile.mkdtemp(), "hands_up.npz"))
+    res = fx.implemented(solve.from_file(path, fps=30.0))
+    assert abs(res.clip.fps - 30.0) < 1e-9 and len(res.clip.times) == 80, len(res.clip.times)
+    assert res.calib.source == "neutral" and res.lm.gaps and any("no person" in w.lower() for w in res.warnings)
+    kept = solve.from_file(path, keep_source_fps=True)
+    assert abs(kept.clip.fps - 60.0) < 1e-6 and len(kept.clip.times) == 160
+
+
 if __name__ == "__main__":
     fx.run_all(globals())
