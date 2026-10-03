@@ -212,5 +212,7 @@ def delta_heatmap(obj, key_name, max_delta=None):
 
 def clear_heatmaps(obj):
     attrs = obj.data.color_attributes
-    for a in [a for a in attrs if a.name.startswith(HEATMAP_PREFIX)]:
-        attrs.remove(a)
+    # Look each one up again by name: a removal shifts the array, so held references go stale
+    # (on 4.4 a stale one points at a required attribute and remove() raises).
+    for name in [a.name for a in attrs if a.name.startswith(HEATMAP_PREFIX)]:
+        attrs.remove(attrs[name])
