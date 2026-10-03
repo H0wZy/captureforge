@@ -1,0 +1,25 @@
+name: Setup Blender
+description: Download (cached) a Linux Blender build into ./blender and install its headless runtime libraries.
+inputs:
+  version: { description: "Full version, e.g. 5.2.1", required: true }
+  series: { description: "Release series folder, e.g. 5.2", required: true }
+runs:
+  using: composite
+  steps:
+    - id: cache
+      uses: actions/cache@v6
+      with:
+        path: blender
+        key: blender-${{ inputs.version }}-linux-x64
+    - if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        curl -fL -o blender.tar.xz "https://download.blender.org/release/Blender${{ inputs.series }}/blender-${{ inputs.version }}-linux-x64.tar.xz"
+        mkdir blender
+        tar -xf blender.tar.xz -C blender --strip-components=1
+    # libegl1 + Mesa give headless Blender a software (llvmpipe) EGL context for the Workbench renders.
+    - shell: bash
+      run: >
+        sudo apt-get update && sudo apt-get install -y
+        libxi6 libxkbcommon0 libsm6 libgl1 libxxf86vm1 libxfixes3 libxrender1
+        libegl1 libegl-mesa0 libgl1-mesa-dri

@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  # Stage 1: fast checks, no Blender.
+  lint:
+    name: Lint (byte-compile)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - run: python3 -m compileall -q captureforge tests
+
+  unit:
+    name: Unit tests (pure Python)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - run: |
+          python3 tests/test_video_to_csv.py
+          python3 tests/test_webcam_stream.py
+
+  # Stage 2: the real suite inside Blender, oldest supported LTS and the current release.
+  blender:
+    name: Blender ${{ matrix.version }}
+    needs: [lint, unit]
+    # Pinned so the ubuntu-latest migration (Ubuntu 26, from 2026-10-19) can't change the libraries under us.
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { version: "4.4.3", series: "4.4" }
+          - { version: "5.2.1", series: "5.2" }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-blender
+        with: { version: "${{ matrix.version }}", series: "${{ matrix.series }}" }
+      - name: Validate manifest
+        run: ./blender/blender --command extension validate captureforge
+      - name: Blender tests
+        run: timeout 600 ./blender/blender --background --factory-startup --python tests/run_tests.py
+
+  # Stage 3: the installable zip, kept as a workflow artifact.
+  build:
+    name: Build extension zip
+    needs: blender
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-blender
+        with: { version: "5.2.1", series: "5.2" }
+      - run: |
+          mkdir -p dist
+          ./blender/blender --command extension build --source-dir captureforge --output-dir dist
+      - uses: actions/upload-artifact@v7
+        with:
+          name: captureforge-zip
+          path: dist/*.zip
+
+  # Stage 4: only for version tags, attach the zip to the GitHub Release.
+  release:
+    name: Publish release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with: { name: captureforge-zip, path: dist }
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if gh release view "$tag" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" dist/*.zip --clobber -R "$GITHUB_REPOSITORY"
+          else
+            gh release create "$tag" dist/*.zip --generate-notes -R "$GITHUB_REPOSITORY"
+          fi
