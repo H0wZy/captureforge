@@ -18,3 +18,5 @@ Thanks for helping. CaptureForge is small on purpose: Python, `bpy`, numpy (bund
   say where an idea came from.
 - **Never** use `bmesh.ops.holes_fill` or `edgenet_fill` (they have crashed Blender on real meshes).
 - Contributions are licensed GPL-3.0-or-later, like the rest of the project.
+- **Workflow.** Features follow spec-driven development with a Kanban board: see [docs/WORKFLOW.md](docs/WORKFLOW.md). The
+  project rules are in `.specify/memory/constitution.md`.
