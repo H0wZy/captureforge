@@ -33,7 +33,7 @@ aprendendo como eu. Issues, ideias e pull requests são muito bem-vindos.
   shape).
 - **Vídeo para rosto**. Escolha um vídeo, o FaceForge roda o MediaPipe Face Landmarker num Python separado
   e grava o resultado nas suas shape keys. Funciona com qualquer celular (Android incluso), sem iPhone.
-- **Webcam ao vivo** *(chega na v1)*. Um processo auxiliar manda os 52 valores por UDP no localhost; o Blender aciona as
+- **Webcam ao vivo.** Um processo auxiliar manda os 52 valores por UDP no localhost; o Blender aciona as
   shape keys em tempo real e pode gravar numa action.
 - **Inspetor de qualidade.** Relatório por key (keys vazias, delta máximo, erro de simetria esquerda/direita,
   malha dentro de malha, normais invertidas, triângulos esmagados), mapa de calor do delta como atributo de
@@ -73,7 +73,7 @@ aprendendo como eu. Issues, ideias e pull requests são muito bem-vindos.
 4. **Bake.** Selecione as malhas rigadas, `Make target` (cria uma cópia sem rig `<nome>_FF` e o par
    Source/Target), depois `Bake shape keys`. `Skip empty` descarta keys que não mexem naquela malha.
 5. **Split L/R** (preset simétrico): `Split all`. `jawLeft/Right` e `mouthLeft/Right` nunca são divididas.
-6. **Teste** com um CSV de mocap (ou um vídeo; a webcam chega na v1; veja abaixo), depois `Render review sheet`
+6. **Teste** com um CSV de mocap (ou um vídeo, ou a webcam ao vivo; veja abaixo), depois `Render review sheet`
    e o inspetor de qualidade.
 7. Exporte o alvo em FBX ou glTF com shape keys (e normais de blendshape se a engine pedir).
 
@@ -123,7 +123,7 @@ da shape key ativa num atributo de cor (azul = parado, vermelho = mais movido; S
 
 ## Mocap facial sem iPhone
 
-A importação de CSV e o **Video to face** funcionam hoje; a **Live webcam** *chega na v1*.
+A importação de CSV, o **Video to face** e a **Live webcam** funcionam hoje.
 
 O FaceForge lê um CSV genérico: uma coluna `time` em segundos e uma coluna por shape ARKit, com a mesma
 grafia das shape keys (`eyeBlinkLeft`, ...). Os nomes casam sem diferenciar maiúsculas e há um mapa de
@@ -148,15 +148,25 @@ transforma um Android (ou iPhone) em webcam, o que também serve para o modo ao 
 
 O MediaPipe não produz `tongueOut`, então 51 das 52 shapes são acionadas.
 
-**Webcam ao vivo** *(chega na v1)*: defina o mesmo Python e modelo nas preferências, clique em `Start` e as shape keys
-seguem o seu rosto. `Record` grava o que chega numa action. `Stop` encerra o auxiliar.
+**Webcam ao vivo** (seção 4c do painel): defina o mesmo Python e modelo nas preferências, clique em `Start`, fique
+com o rosto neutro e parado por 2 segundos (calibra) e as shape keys dos alvos seguem o seu rosto. `Record` grava o
+que chega numa action `<objeto>_livemocap` (pode ligar no meio da captura e começa no frame atual). `Stop` encerra o
+auxiliar. `Camera` é o índice da webcam (o Iriun aparece como uma); `Smooth`, `Neutral s` e `Gain` são os mesmos do
+`Video to face`. Com `Start helper` desligado, só escuta: qualquer coisa que mande o pacote abaixo para
+`127.0.0.1:<porta>` aciona o rig.
+
+O pacote é um datagrama UDP de JSON, uns 30 por segundo: `{"t": segundos, "state": "calibrating" | "live" |
+"noface", "v": [52 floats na ordem ARKit]}`, ou `"s": {"jawOpen": 0.3, ...}` no lugar de `"v"` para nomear só
+algumas shapes. Datagramas inválidos são ignorados; com `noface` a última pose é mantida. Rode o emissor na mão com
+`python captureforge/face/helpers/webcam_stream.py --model face_landmarker.task --source 0 --port 9876`
+(`--source` também aceita um arquivo de vídeo, com `--loop`).
 
 Também dá para rodar o script auxiliar na mão:
 `python captureforge/face/helpers/video_to_csv.py video.mp4 -o out.csv --model face_landmarker.task`.
 
 ## Headless, linha de comando e agentes de IA
 
-Os módulos de núcleo (`bake`, `markers`, `split`, `mocap`, `sheet`, `video`, `quality`, `autofit`; `live` chega na v1)
+Os módulos de núcleo (`bake`, `markers`, `split`, `mocap`, `sheet`, `video`, `quality`, `autofit`, `live`)
 recebem objetos explícitos e não dependem do contexto da interface, então rodam no Blender em segundo plano:
 
 ```python
@@ -188,12 +198,13 @@ Headless, um processo do Blender:
 ```
 timeout 300 "C:/Program Files/Blender Foundation/Blender 5.2/blender.exe" --background --factory-startup --python tests/run_tests.py
 python tests/test_video_to_csv.py
+python tests/test_webcam_stream.py
 ```
 
 O primeiro monta uma cabeça procedural (esfera, armature, olhos, dentes) e imprime
 `FaceForge tests: N passed, M failed`, saindo com código diferente de 0 em falha. O GitHub Actions roda o
 mesmo a cada push. Defina `FACEFORGE_PYTHON` (um python com mediapipe e opencv) e `FACEFORGE_MODEL` (o arquivo
-`.task`) para rodar também o teste do auxiliar MediaPipe de verdade; também valem para o `Video to face` quando
+`.task`) para rodar também os testes dos auxiliares MediaPipe de verdade (vídeo, auto rig num rosto de teste, stream ao vivo); sem eles esses testes imprimem `skipped` e passam; também valem para o `Video to face` quando
 as preferências do add-on estão vazias. Valide o manifesto com `blender --command extension validate captureforge`.
 
 ## Limites conhecidos
@@ -203,6 +214,8 @@ as preferências do add-on estão vazias. Valide o manifesto com `blender --comm
   o bake e religados no fim.
 - O split assume a linha média em X = 0 do objeto.
 - Rotações de cabeça e olhos do Live Link Face são ignoradas por enquanto.
+- O timer da captura ao vivo (o botão `Start`) é um operador modal e é testado na mão; o caminho de
+  recepção, a leitura dos pacotes, a gravação e o tratamento do auxiliar são cobertos pelos testes headless.
 - O review sheet é um render Workbench: serve para conferir forma, não para apresentação.
 
 ## Roadmap

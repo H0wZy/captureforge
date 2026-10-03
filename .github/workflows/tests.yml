@@ -36,4 +36,6 @@ jobs:
         run: timeout 600 ./blender/blender --background --factory-startup --python tests/run_tests.py
 
       - name: Pure Python tests
-        run: python3 tests/test_video_to_csv.py
+        run: |
+          python3 tests/test_video_to_csv.py
+          python3 tests/test_webcam_stream.py

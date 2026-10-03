@@ -4,11 +4,20 @@ import bpy
 from bpy.props import (BoolProperty, CollectionProperty, EnumProperty, FloatProperty,
                        IntProperty, PointerProperty, StringProperty)
 
+from . import live
+
 
 # One sidebar tab for the whole suite: sibling modules (body, scan) put their panels in the same category.
 CATEGORY = "CaptureForge"
 # The add-on (extension) id: the suite package that contains this module. Preferences live under it.
 ADDON_ID = __package__.rpartition(".")[0]
+
+
+def _live_record_changed(self, context):
+    """Recording can be switched on mid-capture: it starts at the current frame."""
+    if live.SESSION.active:
+        live.SESSION.record, live.SESSION.rec_t0 = self.live_record, None
+        live.SESSION.start_frame = context.scene.frame_current
 
 
 def _is_mesh(self, obj):
@@ -76,6 +85,13 @@ class FFSettings(bpy.types.PropertyGroup):
     ])
     fit_size: IntProperty(name="Render size", default=768, min=256, max=4096,
                           description="Pixels of the front render MediaPipe looks at")
+    live_port: IntProperty(name="Port", default=9876, min=1024, max=65535,
+                           description="UDP port on 127.0.0.1 the capture listens on")
+    live_camera: IntProperty(name="Camera", default=0, min=0, description="Webcam index for the helper")
+    live_launch: BoolProperty(name="Start helper", default=True,
+                              description="Launch the webcam helper; off = only listen (another sender drives it)")
+    live_record: BoolProperty(name="Record", default=False, update=_live_record_changed,
+                              description="Keyframe the live values into an action while capturing")
     video_path: StringProperty(name="Video", subtype="FILE_PATH")
     video_smooth: FloatProperty(name="Smooth", default=0.3, min=0.0, max=1.0,
                                 description="Light smoothing; 0 = off, higher lags the motion")
@@ -182,6 +198,23 @@ class FACEFORGE_PT_main(bpy.types.Panel):
         row.prop(s, "video_gain")
         box.operator("faceforge.video_to_face", icon="PLAY")
         box.operator("faceforge.setup_help", icon="QUESTION")
+
+        box = lay.box()
+        box.label(text="4c. Live webcam", icon="CAMERA_DATA")
+        row = box.row(align=True)
+        row.prop(s, "live_port")
+        row.prop(s, "live_camera")
+        row = box.row(align=True)
+        row.prop(s, "live_launch")
+        row.prop(s, "live_record")
+        if live.SESSION.active:
+            box.operator("faceforge.live_stop", icon="PAUSE")
+            box.label(text=f"{live.SESSION.state}, {live.SESSION.packets} packets"
+                      + ("  (hold a still neutral face)" if live.SESSION.state == "calibrating" else ""))
+        else:
+            box.operator("faceforge.live_start", icon="PLAY")
+        for line in live.SESSION.error.splitlines():
+            box.label(text=line, icon="ERROR")
 
         box = lay.box()
         box.label(text="5. Quality inspector", icon="VIEWZOOM")

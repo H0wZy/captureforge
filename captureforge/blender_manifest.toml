@@ -15,6 +15,7 @@ license = ["SPDX:GPL-3.0-or-later"]
 
 [permissions]
 files = "Read face mocap CSV files and write review sheet images"
+network = "Receive live face data from a helper process over localhost UDP"
 
 [build]
 paths_exclude_pattern = ["__pycache__/", ".*"]

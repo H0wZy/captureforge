@@ -5,7 +5,7 @@ import tempfile
 
 import bpy
 
-from . import autofit, bake, markers, mocap, presets, quality, sheet, split, video
+from . import autofit, bake, live, markers, mocap, presets, quality, sheet, split, video
 from .ui import ADDON_ID
 
 
@@ -229,6 +229,56 @@ class FACEFORGE_OT_auto_rig(_Op):
         return f"{arm.name}: {len(arm.data.bones)} bones"
 
 
+class FACEFORGE_OT_live_start(bpy.types.Operator):
+    bl_idname = "faceforge.live_start"
+    bl_label = "Start"
+    bl_description = ("Drive the targets' shape keys live from the webcam helper (or any UDP sender on the port); "
+                      "Record keyframes what arrives")
+
+    def invoke(self, context, event):
+        s = context.scene.faceforge
+        try:
+            command = None
+            if s.live_launch:
+                python = bpy.path.abspath(_pref(context, "python_path", "FACEFORGE_PYTHON"))
+                model = bpy.path.abspath(_pref(context, "model_path", "FACEFORGE_MODEL"))
+                video.check_setup(python, model)
+                command = live.helper_command(python, model, s.live_port, s.live_camera, s.video_smooth,
+                                              s.video_neutral, s.video_gain)
+            live.SESSION.start(s.live_port, command, s.live_record, context.scene.frame_current)
+        except ValueError as e:
+            self.report({"ERROR"}, str(e))
+            return {"CANCELLED"}
+        wm = context.window_manager
+        self._timer = wm.event_timer_add(1 / 60, window=context.window)
+        wm.modal_handler_add(self)
+        return {"RUNNING_MODAL"}
+
+    def modal(self, context, event):
+        if event.type != "TIMER":
+            return {"PASS_THROUGH"}
+        scene = context.scene
+        live.SESSION.tick(_targets(context), scene.render.fps / scene.render.fps_base)
+        if context.area:
+            context.area.tag_redraw()
+        if live.SESSION.active and not live.SESSION.error:
+            return {"PASS_THROUGH"}
+        if live.SESSION.error:
+            self.report({"ERROR"}, live.SESSION.error)
+        context.window_manager.event_timer_remove(self._timer)
+        return {"FINISHED"}
+
+
+class FACEFORGE_OT_live_stop(bpy.types.Operator):
+    bl_idname = "faceforge.live_stop"
+    bl_label = "Stop"
+    bl_description = "End the live capture and the webcam helper"
+
+    def execute(self, context):
+        live.SESSION.stop()
+        return {"FINISHED"}
+
+
 class FACEFORGE_OT_setup_help(bpy.types.Operator):
     bl_idname = "faceforge.setup_help"
     bl_label = "Setup instructions"
@@ -306,5 +356,6 @@ classes = (
     FACEFORGE_OT_pair_add, FACEFORGE_OT_pair_remove, FACEFORGE_OT_bake,
     FACEFORGE_OT_reset_keys, FACEFORGE_OT_split_lr, FACEFORGE_OT_split_all,
     FACEFORGE_OT_import_csv, FACEFORGE_OT_video_to_face, FACEFORGE_OT_setup_help, FACEFORGE_OT_auto_rig,
+    FACEFORGE_OT_live_start, FACEFORGE_OT_live_stop,
     FACEFORGE_OT_inspect, FACEFORGE_OT_heatmap, FACEFORGE_OT_render_sheet,
 )

@@ -5,7 +5,7 @@ Clean-room implementation; see docs/RESEARCH.md and docs/DESIGN.md.
 
 import bpy
 
-from . import ops, ui
+from . import live, ops, ui
 
 _classes = ui.classes + ops.classes
 
@@ -17,6 +17,7 @@ def register():
 
 
 def unregister():
+    live.SESSION.stop()
     del bpy.types.Scene.faceforge
     for cls in reversed(_classes):
         bpy.utils.unregister_class(cls)

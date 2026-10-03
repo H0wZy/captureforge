@@ -19,7 +19,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))  # repo root, so "import captureforge" finds the package
 
 import captureforge  # noqa: E402
-from captureforge.face import bake, markers, autofit, mocap, presets, quality, sheet, split, video  # noqa: E402
+from captureforge.face import bake, markers, autofit, live, mocap, presets, quality, sheet, split, video  # noqa: E402
 
 SAMPLE_CSV = os.path.join(HERE, "sample_livelink.csv")
 POSES = ["jawOpen", "eyeBlink", "browInnerUp"]
@@ -848,6 +848,182 @@ def test_18_autofit_real_mediapipe():
     drop(arm)
     for o in [head] + parts:
         drop(o)
+
+
+def live_target(*names):
+    t = bake.make_target(S["head"])
+    bake.ensure_basis(t)
+    for n in names:
+        t.shape_key_add(name=n, from_mix=False).value = 0.0
+    return t
+
+
+def send_to(port, payload):
+    import json
+    import socket
+    data = payload if isinstance(payload, bytes) else json.dumps(payload).encode()
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.sendto(data, ("127.0.0.1", port))
+
+
+def wait_poll(rx, want, timeout=2.0):
+    """Poll until `want` datagrams arrived (UDP on localhost is fast, not instant)."""
+    import time
+    got, end = [], time.time() + timeout
+    while sum(g[2] for g in got) < want and time.time() < end:
+        r = rx.poll()
+        if r[2]:
+            got.append(r)
+        time.sleep(0.005)
+    return got
+
+
+def wait_poll_session(sess, targets, timeout=2.0):
+    import time
+    end = time.time() + timeout
+    while time.time() < end:
+        before = sess.packets
+        n = sess.tick(targets, 24)
+        if sess.packets > before:
+            return n
+        time.sleep(0.005)
+    raise AssertionError("no packet arrived")
+
+
+def jaw_frames(t):
+    from bpy_extras import anim_utils
+    ad = t.data.shape_keys.animation_data
+    bag = anim_utils.action_get_channelbag_for_slot(ad.action, ad.action_slot)
+    fc = bag.fcurves.find('key_blocks["jawOpen"].value')
+    return [(round(k.co[0]), round(k.co[1], 3)) for k in fc.keyframe_points]
+
+
+def test_19_live_receive_path():
+    """Fake sender -> Receiver -> shape keys: parsing, bad packets, clamping, case, recording, Session."""
+    import time
+    t = live_target("jawOpen", "eyeBlinkLeft", "mouthSmileRight")
+    keys = t.data.shape_keys.key_blocks
+    v = [0.0] * 52
+    v[presets.ARKIT_52.index("jawOpen")] = 0.25
+    assert live.parse_packet(b"\xff\x00") is None and live.parse_packet(b"{}") is None
+    assert live.parse_packet(b'{"v": [0.1]}') is None and live.parse_packet(b"[1,2]") is None
+    assert live.parse_packet(b'{"s": {"a": "x"}}') is None
+    state, scores = live.parse_packet(('{"state": "live", "v": %s}' % v).encode())
+    assert state == "live" and scores["jawOpen"] == 0.25 and len(scores) == 52
+
+    rx = live.Receiver(0)
+    try:
+        for bad in (b"\xff\x00", b"{}", {"v": [0.1]}):
+            send_to(rx.port, bad)
+        send_to(rx.port, {"state": "live", "v": v})
+        send_to(rx.port, {"state": "live", "s": {"JAWOPEN": 0.5, "eyeBlinkLeft": 1.5, "nope": 1}})
+        got = wait_poll(rx, 5)
+        assert sum(g[2] for g in got) == 5, got
+        state, scores, _ = got[-1]
+        assert state == "live" and scores == {"JAWOPEN": 0.5, "eyeBlinkLeft": 1.5, "nope": 1.0}, scores
+        assert rx.poll() == (None, None, 0)  # drained
+        try:
+            live.Receiver(rx.port)
+        except ValueError as e:
+            assert str(rx.port) in str(e)
+        else:
+            raise AssertionError("expected ValueError for a port in use")
+    finally:
+        rx.close()
+
+    n = live.apply_scores([t], scores)
+    assert n == 2 and abs(keys["jawOpen"].value - 0.5) < 1e-6 and keys["eyeBlinkLeft"].value == 1.0
+    assert keys["mouthSmileRight"].value == 0.0, [(k.name, k.value) for k in keys]
+    assert live.apply_scores([t], {"x": 0.3}, mapping={"x": "mouthSmileRight"}) == 1
+    assert abs(keys["mouthSmileRight"].value - 0.3) < 1e-6
+    # recording keyframes the values into <object>_livemocap
+    live.apply_scores([t], {"jawOpen": 0.1}, record_frame=5)
+    live.apply_scores([t], {"jawOpen": 0.9}, record_frame=8)
+    assert t.data.shape_keys.animation_data.action.name.startswith(f"{t.name}_livemocap")
+    assert jaw_frames(t) == [(5, 0.1), (8, 0.9)], jaw_frames(t)
+    t.data.shape_keys.animation_data_clear()
+    bake.reset_keys(t)
+
+    # Session: calibrating packets change nothing, live ones drive the keys, noface holds, record by time
+    sess = live.Session()
+    sess.start(0)
+    port = sess.receiver.port
+    send_to(port, {"state": "calibrating", "s": {"jawOpen": 0.7}})
+    wait_poll_session(sess, [t])
+    assert sess.state == "calibrating" and keys["jawOpen"].value == 0.0
+    send_to(port, {"state": "live", "s": {"jawOpen": 0.6}})
+    assert wait_poll_session(sess, [t]) == 1 and abs(keys["jawOpen"].value - 0.6) < 1e-6 and sess.state == "live"
+    send_to(port, {"state": "noface", "s": {"jawOpen": 0.0}})
+    wait_poll_session(sess, [t])
+    assert sess.state == "noface" and abs(keys["jawOpen"].value - 0.6) < 1e-6
+    sess.record, sess.start_frame = True, 10
+    send_to(port, {"state": "live", "s": {"jawOpen": 0.2}})
+    wait_poll_session(sess, [t])
+    time.sleep(0.5)
+    send_to(port, {"state": "live", "s": {"jawOpen": 0.4}})
+    wait_poll_session(sess, [t])
+    frames = jaw_frames(t)
+    assert frames[0] == (10, 0.2) and 21 <= frames[-1][0] <= 23 and frames[-1][1] == 0.4, frames  # 0.5 s = 12 frames
+    sess.stop()
+    assert not sess.active
+    try:  # a helper that dies at once: its error text comes back and the session ends
+        stub = os.path.join(S["tmp"], "die.py")
+        open(stub, "w").write("import sys; sys.exit('error: cannot open camera 0')")
+        sess.start(0, command=[blender_python(), stub])
+        for _ in range(100):
+            time.sleep(0.05)
+            sess.tick([t], 24)
+            if not sess.active:
+                break
+        assert not sess.active and "cannot open camera 0" in sess.error, sess.error
+    finally:
+        sess.stop()
+    t.data.shape_keys.animation_data_clear()
+    bpy.data.objects.remove(t)
+    captureforge.register()
+    try:
+        assert bpy.ops.faceforge.live_stop() == {"FINISHED"}
+    finally:
+        captureforge.unregister()
+
+
+def test_20_live_real_helper():
+    """Optional (FACEFORGE_PYTHON + FACEFORGE_MODEL): the real helper streams a looped video of the dummy
+    face in LIVE_STREAM mode; the Session must go calibrating -> live and keep the keys in range."""
+    import subprocess
+    import time
+    py, model = os.environ.get("FACEFORGE_PYTHON"), os.environ.get("FACEFORGE_MODEL")
+    if not (py and model and os.path.isfile(model)):
+        print("  (skipped: set FACEFORGE_PYTHON and FACEFORGE_MODEL)")
+        return
+    head, parts = face_dummy()
+    cam = autofit.front_camera([head] + parts)
+    png = os.path.join(S["tmp"], "face.png")
+    autofit.render_front(S["scene"], [head] + parts, png, cam, 512, color_type="OBJECT")
+    for o in [head] + parts:
+        drop(o)
+    mp4 = os.path.join(S["tmp"], "face.mp4")
+    code = ("import cv2;im=cv2.imread(r'%s');w=cv2.VideoWriter(r'%s',cv2.VideoWriter_fourcc(*'mp4v'),30,"
+            "(im.shape[1],im.shape[0]));[w.write(im) for _ in range(90)];w.release()" % (png, mp4))
+    subprocess.run([py, "-c", code], check=True)
+    t = live_target("jawOpen", "eyeBlinkLeft", "mouthSmileRight")
+    sess = live.Session()
+    sess.start(0)  # bind to learn a free port, then restart on it with the helper
+    port = sess.receiver.port
+    sess.stop()
+    sess.start(port, command=live.helper_command(py, model, port, source=mp4, neutral_seconds=0.5) + ["--loop"])
+    try:
+        end, seen, n = time.time() + 40, set(), 0
+        while time.time() < end and "live" not in seen:
+            n += sess.tick([t], 24)
+            seen.add(sess.state)
+            assert not sess.error, sess.error
+            time.sleep(0.02)
+        assert "live" in seen and sess.packets > 5, (seen, sess.packets)
+        assert all(0.0 <= kb.value <= 1.0 for kb in t.data.shape_keys.key_blocks)
+    finally:
+        sess.stop()
+    bpy.data.objects.remove(t)
 
 
 TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
