@@ -24,7 +24,7 @@ sys.path.insert(0, HERE)
 
 import captureforge  # noqa: E402
 import fixtures_body as fx  # noqa: E402
-from captureforge.body import apply, calibrate, profile, rigtools, solve  # noqa: E402
+from captureforge.body import apply, calibrate, clipops, export, profile, rigtools, solve  # noqa: E402
 
 TMP = tempfile.mkdtemp()
 
@@ -327,6 +327,97 @@ def test_14_edit_operators_trim_loop_in_place_and_mirror():
         assert "no BodyForge clip" in str(e), str(e)
     else:
         raise AssertionError("expected a refusal")
+
+
+# ---------------------------------------------------------------- export for Unity
+
+def exported(name, noise=0.0, in_place=True, helper_bone=False):
+    """Solved (and cleaned) hands-up clip on the reference rig, exported; returns (armature, clip, path)."""
+    s, arm = noisy_setup(name, noise)
+    if in_place:
+        assert bpy.ops.bodyforge.cleanup() == {"FINISHED"}
+    if helper_bone:
+        bpy.context.view_layer.objects.active = arm
+        bpy.ops.object.mode_set(mode="EDIT")
+        eb = arm.data.edit_bones.new("IK_Helper")
+        eb.head, eb.tail, eb.use_deform = Vector((0.5, 0, 0.2)), Vector((0.5, 0, 0.3)), False
+        bpy.ops.object.mode_set(mode="OBJECT")
+    path = os.path.join(TMP, name + ".fbx")
+    info = fx.implemented(export.export_unity(arm, path))
+    return arm, apply.read_clip(arm.animation_data.action, "clip"), path, info
+
+
+def test_15_export_options_follow_the_documented_unity_preset():
+    o = fx.implemented(export.FBX_OPTIONS)
+    expected = {"add_leaf_bones": False, "use_armature_deform_only": True, "bake_anim": True,
+                "bake_anim_use_nla_strips": False, "bake_anim_use_all_actions": False, "bake_anim_simplify_factor": 0.0,
+                "bake_space_transform": True, "axis_forward": "-Z", "axis_up": "Y", "primary_bone_axis": "Y",
+                "secondary_bone_axis": "X", "global_scale": 1.0, "use_selection": True}
+    for key, value in expected.items():
+        assert o[key] == value, (key, o.get(key), value)
+    assert o["object_types"] == {"ARMATURE"}
+
+
+def test_16_exported_fbx_reads_back_with_the_humanoid_bones_rest_pose_rate_and_hips_track():
+    arm, clip, path, info = exported("unity", noise=0.004, helper_bone=True)
+    assert os.path.getsize(path) > 1000 and info["frames"] == 105 and info["fps"] == 30.0 and info["in_place"]
+    scene = bpy.context.scene
+    scene.render.fps = 24  # the read-back must bring the file's own rate
+    objects_before = {o.name for o in bpy.data.objects}
+    back = fx.implemented(export.readback(path))
+    assert back["fps"] == 30, back["fps"]
+    names = [profile.normalise(n) for n in back["bones"]]
+    assert sorted(names) == sorted(profile.NAMES), "22 profile bones, no leaf bones, no non-deform helper"
+    assert profile.REQUIRED <= set(names)
+    for bone, parent in back["parents"].items():
+        assert (profile.normalise(parent) if parent else None) == profile.BONES[profile.INDEX[profile.normalise(bone)]].parent
+    for name, head in back["rest_heads"].items():
+        assert np.linalg.norm(np.array(head) - profile.HEAD[profile.INDEX[profile.normalise(name)]]) < 2e-3, name
+    assert back["frame_range"] == (1, 105), back["frame_range"]
+    _, head = solve.fk(clip.rot, clip.hips_pos)
+    assert np.abs(np.array(back["hips_z"]) - clip.hips_pos[:, 2]).max() < 2e-3, "hips height track"
+    assert np.abs(np.array(back["left_hand_z"]) - head[:, profile.INDEX["LeftHand"], 2]).max() < 2e-3, "the pose survives"
+    hips_xy = np.array(back["hips_xy"])
+    assert np.ptp(hips_xy, axis=0).max() < 1e-4, "an in-place clip has no horizontal drift"
+    assert {o.name for o in bpy.data.objects} == objects_before and scene.render.fps == 24, "the read-back cleans up"
+
+
+def test_17_a_wrong_armature_is_refused_with_the_bone_list_and_nothing_is_written():
+    s, arm = noisy_setup("refuse")
+    bpy.context.view_layer.objects.active = arm
+    bpy.ops.object.mode_set(mode="EDIT")
+    arm.data.edit_bones.remove(arm.data.edit_bones["mixamorig:LeftHand"])
+    extra = arm.data.edit_bones.new("Tail_Helper")
+    extra.head, extra.tail = Vector((0, 0, 0)), Vector((0, 0, 0.1))
+    bpy.ops.object.mode_set(mode="OBJECT")
+    path = os.path.join(TMP, "refused.fbx")
+    try:
+        export.export_unity(arm, path)
+    except ValueError as e:
+        assert "LeftHand" in str(e) and "Tail_Helper" in str(e), str(e)
+    else:
+        raise AssertionError("expected a refusal")
+    s.export_path = path
+    try:
+        bpy.ops.bodyforge.export_unity()
+    except RuntimeError as e:
+        assert "LeftHand" in str(e)
+    else:
+        raise AssertionError("expected a refusal from the operator too")
+    assert not os.path.exists(path)
+
+
+def test_18_export_operator_writes_the_file_and_warns_about_scale():
+    s, arm = noisy_setup("opexp", noise=0.0)
+    s.export_path = os.path.join(TMP, "op.fbx")
+    assert bpy.ops.bodyforge.export_unity() == {"FINISHED"} and os.path.isfile(s.export_path)
+    arm.scale = (2, 2, 2)
+    try:
+        bpy.ops.bodyforge.export_unity()
+    except RuntimeError as e:
+        assert "scale" in str(e).lower()
+    else:
+        raise AssertionError("expected the scale refusal")
 
 
 def test_11_real_mediapipe_end_to_end():

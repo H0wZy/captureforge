@@ -6,7 +6,7 @@ import bpy
 from bpy.props import BoolProperty, StringProperty
 
 from .. import prefs
-from . import apply, calibrate, clipops, landmarks, report, rigtools, solve, video
+from . import apply, calibrate, clipops, export, landmarks, report, rigtools, solve, video
 
 HELPER_JOB = None  # the running Install helper job, polled by a timer
 
@@ -178,6 +178,24 @@ class BODYFORGE_OT_report(_Op):
         apply.write_filmstrip(clip, base + ".filmstrip.png")
         s.report_text = report.text(rep)
         return f"Report written next to {os.path.basename(base)}"
+
+
+class BODYFORGE_OT_export_unity(_Op):
+    bl_idname = "bodyforge.export_unity"
+    bl_label = "Export for Unity"
+    bl_description = ("Write the clip as an FBX with the Unity Humanoid preset (no leaf bones, Y up, baked, deform bones "
+                      "only). Refuses with a bone list when the armature does not match the Mixamo profile")
+
+    def run(self, context):
+        s = context.scene.bodyforge
+        if s.armature is None:
+            raise ValueError("Pick the armature first.")
+        path = _abs(s.export_path)
+        if not path.lower().endswith(".fbx"):
+            path += ".fbx"
+        info = export.export_unity(s.armature, path, s.export_meshes)
+        notes = ("in place" if info["in_place"] else "root motion kept") + (", looping" if info["looped"] else "")
+        return f"Exported {info['frames']} frames at {info['fps']:g} fps ({notes}) to {path}"
 
 
 class BODYFORGE_OT_create_reference(_Op):
@@ -359,5 +377,5 @@ class BODYFORGE_OT_install_helper(bpy.types.Operator):
 
 
 classes = (BODYFORGE_OT_cleanup, BODYFORGE_OT_in_place, BODYFORGE_OT_trim, BODYFORGE_OT_loop, BODYFORGE_OT_mirror,
-           BODYFORGE_OT_report, BODYFORGE_OT_create_reference, BODYFORGE_OT_check_helper, BODYFORGE_OT_landmarks_to_body,
+           BODYFORGE_OT_report, BODYFORGE_OT_export_unity, BODYFORGE_OT_create_reference, BODYFORGE_OT_check_helper, BODYFORGE_OT_landmarks_to_body,
            BODYFORGE_OT_video_to_body, BODYFORGE_OT_install_helper)

@@ -40,6 +40,8 @@ class BFSettings(bpy.types.PropertyGroup):
     trim_start: IntProperty(name="Start", default=0, min=0, description="First frame to keep (0 = clip start)")
     trim_end: IntProperty(name="End", default=0, min=0, description="Last frame to keep (0 = clip end)")
     export_path: StringProperty(name="FBX", subtype="FILE_PATH", default="//bodyforge_clip.fbx")
+    export_meshes: BoolProperty(name="Include meshes", default=False,
+                                description="Also export the meshes skinned to the armature")
     warnings: StringProperty(description="Warnings from the last solve, one per line")
     report_text: StringProperty(description="Quality report summary, one line per entry")
 
@@ -115,6 +117,12 @@ class BODYFORGE_PT_main(bpy.types.Panel):
         box.operator("bodyforge.report", icon="TEXT")
         if s.report_text:
             _lines(box, s.report_text)
+
+        box = lay.box()
+        box.label(text="6. Export for Unity", icon="EXPORT")
+        box.prop(s, "export_path")
+        box.prop(s, "export_meshes")
+        box.operator("bodyforge.export_unity", icon="EXPORT")
 
 
 classes = (BFSettings, BODYFORGE_PT_main)

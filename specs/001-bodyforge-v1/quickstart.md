@@ -44,8 +44,23 @@ If something fails, the panel shows the manual steps (the same `SETUP_LINES` pat
 
 ## 5. Export and Unity check (user story 3)
 
-1. Press **Export for Unity**; expected: an FBX, and a refusal with a bone list if the armature is not the profile.
+1. Press **Export for Unity**; expected: an FBX, and a refusal with a bone list if the armature is not the profile
+   (and a refusal if the armature's object scale is not 1: apply it with Object > Apply > Scale first).
 2. In Unity: Animation Type Humanoid, Avatar = the character's avatar; expected: no import warnings, the clip plays.
+
+### Manual Unity Humanoid import check (maintainer, outside CI)
+
+The headless tests prove the FBX has the right bones, T-pose rest, frame rate and animation. They cannot prove Unity
+accepts it, so each release does this once with the game's own character:
+
+1. Copy the exported `.fbx` into the Unity project's `Assets` folder.
+2. Select it, open the **Rig** tab: **Animation Type = Humanoid**, **Avatar Definition = Copy From Other Avatar**,
+   **Source** = the character's avatar, press **Apply**. Expected: no red or yellow warning on the Rig tab.
+3. Open the **Animation** tab. Expected: one clip named after the Blender action, frame range and fps as exported, no
+   import warnings in the console. For an in-place clip tick **Bake Into Pose** for Root Transform Rotation, Y and XZ.
+4. Press play in the preview with the character. Expected: the pose follows the video, feet on the floor, no
+   twisted limbs. For a looping clip tick **Loop Time** and check there is no pop at the seam.
+5. Record the result (Unity version, avatar setup, pass or the problem seen) in the PR description.
 
 ## 6. The four client clips
 
