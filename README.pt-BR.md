@@ -26,14 +26,14 @@ aprendendo como eu. Issues, ideias e pull requests são muito bem-vindos.
 - **Split Esquerda/Direita** com falloff suave na linha média (sem degrau no nariz, lábios ou queixo).
 - **Importação de mocap.** CSV do Live Link Face ou CSV genérico (`time` em segundos mais uma coluna por
   shape).
-- **Vídeo para rosto.** Escolha um vídeo, o FaceForge roda o MediaPipe Face Landmarker num Python separado
+- **Vídeo para rosto** *(chega na v1)*. Escolha um vídeo, o FaceForge roda o MediaPipe Face Landmarker num Python separado
   e grava o resultado nas suas shape keys. Funciona com qualquer celular (Android incluso), sem iPhone.
-- **Webcam ao vivo.** Um processo auxiliar manda os 52 valores por UDP no localhost; o Blender aciona as
+- **Webcam ao vivo** *(chega na v1)*. Um processo auxiliar manda os 52 valores por UDP no localhost; o Blender aciona as
   shape keys em tempo real e pode gravar numa action.
-- **Inspetor de qualidade.** Relatório por key (keys vazias, delta máximo, erro de simetria esquerda/direita,
+- **Inspetor de qualidade** *(chega na v1)*. Relatório por key (keys vazias, delta máximo, erro de simetria esquerda/direita,
   malha dentro de malha, normais invertidas, triângulos esmagados), mapa de calor do delta como atributo de
   cor e relatório em txt/json.
-- **Auto rig fit.** Renderiza a cabeça, acha os pontos do rosto com o MediaPipe e posiciona um rig facial
+- **Auto rig fit** *(chega na v1)*. Renderiza a cabeça, acha os pontos do rosto com o MediaPipe e posiciona um rig facial
   enxuto (mandíbula, olhos, pálpebras, sobrancelhas, boca, bochechas, língua) com pesos automáticos, ou
   ajusta um metarig facial do Rigify.
 - **Review sheet.** Uma grade PNG com o rosto neutro e cada shape, com legenda.
@@ -68,11 +68,13 @@ aprendendo como eu. Issues, ideias e pull requests são muito bem-vindos.
 4. **Bake.** Selecione as malhas rigadas, `Make target` (cria uma cópia sem rig `<nome>_FF` e o par
    Source/Target), depois `Bake shape keys`. `Skip empty` descarta keys que não mexem naquela malha.
 5. **Split L/R** (preset simétrico): `Split all`. `jawLeft/Right` e `mouthLeft/Right` nunca são divididas.
-6. **Teste** com um CSV de mocap, um vídeo ou a webcam (abaixo), depois `Render review sheet` e o inspetor
-   de qualidade.
+6. **Teste** com um CSV de mocap (vídeo e webcam chegam na v1; veja abaixo), depois `Render review sheet`
+   (e, mais tarde, o inspetor de qualidade).
 7. Exporte o alvo em FBX ou glTF com shape keys (e normais de blendshape se a engine pedir).
 
 ## Mocap facial sem iPhone
+
+A importação de CSV funciona hoje; **Video to face** e **Live webcam** *chegam na v1* (o script auxiliar `faceforge/helpers/video_to_csv.py` já funciona pela linha de comando).
 
 O FaceForge lê um CSV genérico: uma coluna `time` em segundos e uma coluna por shape ARKit, com a mesma
 grafia das shape keys (`eyeBlinkLeft`, ...). Os nomes casam sem diferenciar maiúsculas e há um mapa de
@@ -105,7 +107,7 @@ Também dá para rodar o script auxiliar na mão:
 
 ## Headless, linha de comando e agentes de IA
 
-Os módulos de núcleo (`bake`, `markers`, `split`, `mocap`, `sheet`, `quality`, `autofit`, `video`, `live`)
+Os módulos de núcleo (`bake`, `markers`, `split`, `mocap`, `sheet`; `quality`, `autofit`, `video` e `live` chegam na v1)
 recebem objetos explícitos e nunca leem `bpy.context`, então rodam no Blender em segundo plano:
 
 ```python
@@ -157,6 +159,22 @@ mesmo a cada push. Valide o manifesto com `blender --command extension validate 
 - Rotação de cabeça e olhos do mocap para ossos; streaming UDP do Live Link Face.
 - Listas de nomes carregáveis (Audio2Face e outras).
 - Publicação em extensions.blender.org.
+
+Ideias da v1.1:
+
+- Pose a partir de imagem de referência: resolver o rig para o MediaPipe enxergar a mesma expressão de uma
+  foto ou de uma imagem de IA.
+- Mapas automáticos de rugas e tensão por shape.
+- Transferência de expressões entre personagens.
+
+### A família Forge
+
+Dois projetos irmãos futuros, no mesmo espírito (gratuitos, Blender, amigáveis a IA):
+
+- **BodyForge**: mocap corporal sem marcadores a partir de 1 a 3 vídeos de celular (MediaPipe Pose,
+  triangulação de várias câmeras, trava de pés, retarget para um humanoide).
+- **ScanForge**: scan de rosto e corpo a partir de um vídeo 360 graus (escolha de quadros nítidos, COLMAP ou
+  Meshroom como ferramentas externas, wrap numa topologia limpa e animável, depois FaceForge).
 
 ## Créditos e clean room
 

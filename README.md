@@ -25,13 +25,13 @@ very welcome.
   deform modifiers and Armature are baked exactly as you see them. Every mesh gets the same key names.
 - **Split Left/Right** with a smooth falloff across the midline (no step on the nose, lips or chin).
 - **Mocap import.** CSV from Live Link Face or a generic CSV (`time` in seconds plus one column per shape).
-- **Video to face.** Pick a video, FaceForge runs MediaPipe Face Landmarker in a separate Python and keys
+- **Video to face** *(coming in v1)*. Pick a video, FaceForge runs MediaPipe Face Landmarker in a separate Python and keys
   the result onto your shape keys. Works with any phone (Android friendly), no iPhone needed.
-- **Live webcam.** A helper process streams the 52 scores over localhost UDP; Blender drives the shape keys
+- **Live webcam** *(coming in v1)*. A helper process streams the 52 scores over localhost UDP; Blender drives the shape keys
   in real time and can record into an action.
-- **Quality inspector.** Per-key report (empty keys, max delta, left/right symmetry error, mesh-inside-mesh
+- **Quality inspector** *(coming in v1)*. Per-key report (empty keys, max delta, left/right symmetry error, mesh-inside-mesh
   checks, flipped normals, crushed triangles), a delta heatmap as a color attribute, and a txt/json report.
-- **Auto rig fit.** Renders the head, finds the face landmarks with MediaPipe, and places a lean face rig
+- **Auto rig fit** *(coming in v1)*. Renders the head, finds the face landmarks with MediaPipe, and places a lean face rig
   (jaw, eyes, lids, brows, mouth, cheeks, tongue) with automatic weights, or fits a Rigify face metarig.
 - **Review sheet.** A PNG grid with the neutral face and every shape, labelled.
 - **Headless friendly.** Every feature is a plain Python function that takes explicit objects, so scripts
@@ -64,11 +64,13 @@ very welcome.
 4. **Bake.** Select the rigged meshes, `Make target` (creates an unrigged copy `<name>_FF` and the
    Source/Target pair), then `Bake shape keys`. `Skip empty` drops keys that do not move a given mesh.
 5. **Split L/R** (symmetric preset): `Split all`. `jawLeft/Right` and `mouthLeft/Right` are never split.
-6. **Test** with a mocap CSV, a video or the webcam (below), then `Render review sheet` and the quality
-   inspector.
+6. **Test** with a mocap CSV (video and webcam are coming in v1; see below), then `Render review sheet`
+   (and, later, the quality inspector).
 7. Export the target as FBX or glTF with shape keys (and blendshape normals if your engine wants them).
 
 ## Face mocap without an iPhone
+
+The CSV import works today; **Video to face** and **Live webcam** are *coming in v1* (the helper script `faceforge/helpers/video_to_csv.py` already works from the command line).
 
 FaceForge reads a generic CSV: a `time` column in seconds and one column per ARKit shape, in the same
 spelling as the shape keys (`eyeBlinkLeft`, ...). Column names are matched case-insensitively and a
@@ -101,7 +103,7 @@ You can also run the helper script yourself:
 
 ## Headless, command line and AI agents
 
-The core modules (`bake`, `markers`, `split`, `mocap`, `sheet`, `quality`, `autofit`, `video`, `live`) take explicit objects and never read `bpy.context`, so they run in background Blender:
+The core modules (`bake`, `markers`, `split`, `mocap`, `sheet`; `quality`, `autofit`, `video` and `live` are coming in v1) take explicit objects and never read `bpy.context`, so they run in background Blender:
 
 ```python
 # blender --background rig.blend --python bake_it.py
@@ -151,6 +153,21 @@ Validate the manifest with `blender --command extension validate faceforge`.
 - Head and eye rotation from the mocap onto bones; Live Link Face UDP streaming.
 - Loadable name lists (Audio2Face and others).
 - Listing on extensions.blender.org.
+
+v1.1 ideas:
+
+- Pose from a reference image: solve the rig so MediaPipe sees the same expression as a photo or an AI image.
+- Automatic wrinkle and tension maps per shape.
+- Expression transfer between characters.
+
+### The Forge family
+
+Two future sister projects, in the same spirit (free, Blender, AI-friendly):
+
+- **BodyForge**: markerless body mocap from 1 to 3 phone videos (MediaPipe Pose, multi-camera
+  triangulation, foot lock, retarget to a humanoid).
+- **ScanForge**: face and body scan from a 360-degree video (sharp-frame pick, COLMAP or Meshroom as external
+  tools, wrap onto a clean animatable topology, then FaceForge).
 
 ## Credits and clean room
 
