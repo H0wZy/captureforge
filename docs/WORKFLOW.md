@@ -84,3 +84,10 @@ gh project item-edit 8 --owner H0wZy --url $EPIC --field Status --value Done
 ```
 
 New work that has no spec yet starts as a `[spec]` issue in Backlog.
+
+### Bulk task issues
+
+The `gh project item-add/item-edit --url` commands cost many GraphQL points each; about 20 tasks exhaust the hourly
+limit (5000). The sub-issue `gh api` call above is REST and works as written. For a whole `tasks.md`, create the issues
+and sub-issue links first, then add them to the board with batched GraphQL mutations (`addProjectV2ItemById`, then
+`updateProjectV2ItemFieldValue` for Status and Module, 8 items per request), or spread the `gh project` calls over time.
