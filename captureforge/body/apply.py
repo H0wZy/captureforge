@@ -6,7 +6,7 @@ import json
 import bpy
 import numpy as np
 
-from . import profile, rigtools, solve
+from . import profile, report, rigtools, solve
 
 RAW, CURRENT = "bodyforge_raw", "bodyforge_clip"
 
@@ -95,3 +95,27 @@ def write_clip(obj, clip, name="BodyForge Clip", raw=False, scene=None, set_rate
     elif keep_raw:
         action[RAW] = keep_raw
     return action
+
+
+def _action(obj):
+    return obj.animation_data.action if obj.animation_data else None
+
+
+def stored_clip(obj, key="clip"):
+    """The BodyForge clip ("clip" = current, "raw" = solver output) on the armature's action, or ValueError."""
+    action = _action(obj)
+    clip = read_clip(action, key) if action is not None else None
+    if clip is None:
+        raise ValueError(f"{obj.name} has no BodyForge clip: run Video to body (or Landmark file to body) first.")
+    return clip
+
+
+def rewrite(obj, clip):
+    """Replace the armature's action with `clip` under the same name; the raw clip stays on it."""
+    return write_clip(obj, clip, name=_action(obj).name if _action(obj) else "BodyForge Clip")
+
+
+def write_filmstrip(clip, path, **kw):
+    """Write the review filmstrip (a PNG grid of evenly spaced frames) of a clip."""
+    report.write_png(path, report.filmstrip(clip, **kw))
+    return path

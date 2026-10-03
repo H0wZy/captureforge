@@ -248,6 +248,87 @@ def test_10_install_helper_shows_the_plan_first():
     assert "storage.googleapis.com" in text and "mediapipe" in text and "Run it again with --yes" in text
 
 
+def noisy_setup(name, noise=0.01):
+    """Reference rig with a solved noisy hands-up clip on it (through the operator)."""
+    clean()
+    scene = bpy.context.scene
+    bpy.ops.bodyforge.create_reference()
+    s = scene.bodyforge
+    s.landmarks_path = fx.hands_up_clip(neutral=45, raise_=30, hold=30, noise=noise).save(os.path.join(TMP, name + ".npz"))
+    assert bpy.ops.bodyforge.landmarks_to_body() == {"FINISHED"}
+    return s, s.armature
+
+
+def jitter(a):
+    return float(np.mean(np.abs(a[2:] - 2 * a[1:-1] + a[:-2])))
+
+
+def test_12_cleanup_smooths_from_the_raw_clip_and_can_be_repeated():
+    s, arm = noisy_setup("noisy")
+    raw = apply.read_clip(arm.animation_data.action, "raw")
+    assert bpy.ops.bodyforge.cleanup() == {"FINISHED"}
+    act = arm.animation_data.action
+    out = apply.read_clip(act, "clip")
+    assert out.rot.shape == raw.rot.shape and not np.allclose(out.rot, raw.rot)
+    assert jitter(out.rot) < 0.5 * jitter(raw.rot), (jitter(out.rot), jitter(raw.rot))
+    assert out.contact.any(), "planted feet found"
+    assert np.allclose(apply.read_clip(act, "raw").rot, raw.rot, atol=1e-6), "the raw clip is kept"
+    s.smooth_mode = "PREVIEW"
+    assert bpy.ops.bodyforge.cleanup() == {"FINISHED"}
+    assert apply.read_clip(arm.animation_data.action, "raw") is not None
+    scene = bpy.context.scene
+    scene.frame_set(105)
+    bpy.context.view_layer.update()
+    assert arm.pose.bones["mixamorig:LeftHand"].head.z > arm.pose.bones["mixamorig:Head"].head.z
+
+
+def test_13_report_writes_json_and_a_filmstrip_png_blender_can_load():
+    s, arm = noisy_setup("rep")
+    bpy.ops.bodyforge.cleanup()
+    assert bpy.ops.bodyforge.report() == {"FINISHED"}
+    base = os.path.join(TMP, "rep")
+    from captureforge.body import report
+    rep = report.read(base + ".report.json")
+    assert rep["frames"] == 105 and set(rep["skate_cm_s"]) == {"left", "right"} and "LeftForeArm" in rep["bone_drift"]
+    assert "Foot skate" in s.report_text and "Jitter" in s.report_text
+    img = bpy.data.images.load(base + ".filmstrip.png")
+    assert tuple(img.size) == (960, 440), tuple(img.size)
+
+
+def test_14_edit_operators_trim_loop_in_place_and_mirror():
+    s, arm = noisy_setup("edit", noise=0.0)
+    scene = bpy.context.scene
+    s.trim_start, s.trim_end = 10, 59
+    assert bpy.ops.bodyforge.trim() == {"FINISHED"}
+    clip = apply.read_clip(arm.animation_data.action, "clip")
+    assert len(clip.times) == 50 and scene.frame_end == scene.frame_start + 49
+    s.loop_blend_frames = 6
+    assert bpy.ops.bodyforge.loop() == {"FINISHED"}
+    clip = apply.read_clip(arm.animation_data.action, "clip")
+    assert np.abs(np.sum(clip.rot[-1] * clip.rot[0], axis=-1)).min() > 1 - 1e-6 and clip.flags["looped"]
+    assert bpy.ops.bodyforge.mirror() == {"FINISHED"} and bpy.ops.bodyforge.in_place() == {"FINISHED"}
+    mirrored = apply.read_clip(arm.animation_data.action, "clip")
+    assert mirrored.flags["mirrored"] and mirrored.flags["in_place"]
+    ix = profile.INDEX
+    _, head = solve.fk(mirrored.rot, mirrored.hips_pos)
+    assert head[0, ix["RightHand"], 2] < head[0, ix["Head"], 2]
+    s.trim_start, s.trim_end = 20, 10
+    try:
+        bpy.ops.bodyforge.trim()
+    except RuntimeError as e:
+        assert "End must be after Start" in str(e)
+    else:
+        raise AssertionError("expected a refusal")
+    clean()
+    bpy.ops.bodyforge.create_reference()
+    try:
+        bpy.ops.bodyforge.cleanup()
+    except RuntimeError as e:
+        assert "no BodyForge clip" in str(e), str(e)
+    else:
+        raise AssertionError("expected a refusal")
+
+
 def test_11_real_mediapipe_end_to_end():
     python, model = os.environ.get("BODYFORGE_PYTHON"), os.environ.get("BODYFORGE_POSE_MODEL")
     if not (python and model and os.path.isfile(python) and os.path.isfile(model)):

@@ -86,5 +86,35 @@ class BODYFORGE_PT_main(bpy.types.Panel):
         if s.warnings:
             _lines(box, s.warnings, "ERROR")
 
+        box = lay.box()
+        box.label(text="3. Clean up", icon="MOD_SMOOTH")
+        row = box.row(align=True)
+        row.prop(s, "smooth_mode", expand=True)
+        box.prop(s, "smooth_strength")
+        row = box.row(align=True)
+        row.prop(s, "foot_lock_left", toggle=True)
+        row.prop(s, "foot_lock_right", toggle=True)
+        box.prop(s, "in_place")
+        box.operator("bodyforge.cleanup", icon="BRUSH_DATA")
+
+        box = lay.box()
+        box.label(text="4. Edit the clip", icon="NLA")
+        row = box.row(align=True)
+        row.prop(s, "trim_start")
+        row.prop(s, "trim_end")
+        box.operator("bodyforge.trim", icon="CUT")
+        row = box.row(align=True)
+        row.prop(s, "loop_blend_frames")
+        row.operator("bodyforge.loop", icon="FILE_REFRESH")
+        row = box.row(align=True)
+        row.operator("bodyforge.in_place", icon="PIVOT_BOUNDBOX")
+        row.operator("bodyforge.mirror", icon="MOD_MIRROR")
+
+        box = lay.box()
+        box.label(text="5. Report", icon="VIEWZOOM")
+        box.operator("bodyforge.report", icon="TEXT")
+        if s.report_text:
+            _lines(box, s.report_text)
+
 
 classes = (BFSettings, BODYFORGE_PT_main)

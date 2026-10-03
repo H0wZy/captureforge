@@ -231,8 +231,10 @@ def retarget(rot, rest_rot, parent, present):
 
 # ------------------------------------------------------------------ the solver
 
-def _to_local(G_target, bias):
-    """Chain the targets into clamped local quaternions. Returns (m, B, 4)."""
+def to_local(G_target, bias=None):
+    """Chain global-delta targets (m, B, 3, 3) into joint-limit-clamped local quaternions (m, B, 4).
+    `bias` maps bone names to a rest-offset matrix removed from that bone's target first."""
+    bias = bias or {}
     m = len(G_target)
     Gm = np.empty((m, B, 3, 3))
     out = np.empty((m, B, 4))
@@ -271,7 +273,7 @@ def solve(landmark_file, calib, keep_travel=False):
         for name in NEUTRAL_BIAS:
             i = profile.INDEX[name]
             bias[name] = quat.to_matrix(quat.mean(Gq[w, i], axis=0))
-    rot = _to_local(G, bias)
+    rot = to_local(G, bias)
     for i in range(B):
         rot[:, i] = quat.continuity(rot[:, i])
     hips = _hips(L, P, calib, keep_travel)

@@ -224,3 +224,36 @@ def hands_up_clip(neutral=45, raise_=30, hold=30, fps=30.0, **kw):
     frames += [lerp_euler(NEUTRAL, up, (i + 1) / raise_) for i in range(raise_)]
     frames += [dict(up)] * hold
     return motion(frames, fps=fps, **kw)
+
+
+# ------------------------------------------------------------------ synthetic MotionClips (no solver involved)
+
+def motion_clip(euler_frames, hips=None, fps=30.0):
+    """A solve.MotionClip built straight from local Euler angles (degrees) and hips offsets, so clean-up code is
+    tested without the solver. `hips` is an (n, 3) character-space displacement from the rest hips position."""
+    pure_import()
+    from captureforge.body import profile, quat, solve
+    n = len(euler_frames)
+    rot = np.zeros((n, len(profile.BONES), 4))
+    for t, euler in enumerate(euler_frames):
+        for i, name in enumerate(profile.NAMES):
+            rot[t, i] = quat.from_matrix(euler_matrix(euler.get(name, (0, 0, 0))))
+    for i in range(rot.shape[1]):
+        rot[:, i] = quat.continuity(rot[:, i])
+    offset = np.zeros((n, 3)) if hips is None else np.asarray(hips, float)
+    return solve.MotionClip(fps=fps, times=np.arange(n) / fps, rot=rot, hips_pos=profile.HEAD[0] + offset,
+                            contact=np.zeros((n, 2), bool), conf=np.ones((n, len(profile.BONES))))
+
+
+def planted_clip(n=60, fps=30.0, drift=0.04):
+    """Standing on straight legs. The left foot stays on the floor the whole time while the hips (and so the foot)
+    slide `drift` meters along +X between frames 20 and 40 (skate); the right leg lifts at 15-20 and lands at 40-45."""
+    stand = dict(NEUTRAL)
+    lifted = dict(NEUTRAL, RightUpLeg=(-70, 0, 0), RightLeg=(90, 0, 0), RightFoot=(-20, 0, 0))
+    frames = []
+    for t in range(n):
+        up = min(max((t - 15) / 5.0, 0.0), 1.0) - min(max((t - 40) / 5.0, 0.0), 1.0)
+        frames.append(lerp_euler(stand, lifted, up))
+    hips = np.zeros((n, 3))
+    hips[:, 0] = drift * np.clip((np.arange(n) - 20) / 20.0, 0.0, 1.0)
+    return motion_clip(frames, hips, fps)
