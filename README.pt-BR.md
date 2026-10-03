@@ -196,6 +196,12 @@ Dois projetos irmãos futuros, no mesmo espírito (gratuitos, Blender, amigávei
 - **ScanForge**: scan de rosto e corpo a partir de um vídeo 360 graus (escolha de quadros nítidos, COLMAP ou
   Meshroom como ferramentas externas, wrap numa topologia limpa e animável, depois FaceForge).
 
+## Uso responsável
+
+Não escaneie, recrie nem anime uma pessoa real, incluindo celebridades, sem o consentimento explícito dela, e
+siga as leis locais de imagem e privacidade. O mantenedor não se responsabiliza por mau uso. É uma forte
+recomendação e um aviso, não um termo de licença. Leia o [POLICY.md](POLICY.md) (em inglês).
+
 ## Créditos e clean room
 
 O FaceForge foi escrito do zero a partir de documentação pública e da API do Blender: a lista de blendshapes

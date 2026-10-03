@@ -188,6 +188,12 @@ Two future sister projects, in the same spirit (free, Blender, AI-friendly):
 - **ScanForge**: face and body scan from a 360-degree video (sharp-frame pick, COLMAP or Meshroom as external
   tools, wrap onto a clean animatable topology, then FaceForge).
 
+## Responsible use
+
+Do not scan, recreate or animate a real person, including celebrities, without their explicit consent, and
+follow your local likeness and privacy laws. The maintainer is not responsible for misuse. This is a strong
+recommendation and a warning, not a license term. Read [POLICY.md](POLICY.md).
+
 ## Credits and clean room
 
 FaceForge is written from scratch from public documentation and the Blender API: Apple's ARKit blendshape

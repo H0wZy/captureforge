@@ -5,6 +5,10 @@ from bpy.props import (BoolProperty, CollectionProperty, EnumProperty, FloatProp
                        IntProperty, PointerProperty, StringProperty)
 
 
+# One sidebar tab for the whole suite: sibling modules (body, scan) put their panels in the same category.
+CATEGORY = "FaceForge"
+
+
 def _is_mesh(self, obj):
     return obj.type == "MESH"
 
@@ -104,7 +108,7 @@ class FACEFORGE_PT_main(bpy.types.Panel):
     bl_label = "FaceForge"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "FaceForge"
+    bl_category = CATEGORY
 
     def draw(self, context):
         s = context.scene.faceforge

@@ -2,6 +2,10 @@
 
 Thanks for helping. FaceForge is small on purpose: Python, `bpy`, numpy (bundled with Blender), no frameworks.
 
+- **Layout.** FaceForge is the *face* module of what may become a suite (body, scan). Keep it
+  self-contained: its settings live in one `PropertyGroup` (`scene.faceforge`), its panels use the shared
+  `ui.CATEGORY` sidebar tab, and add-on preferences stay in the single `FFPreferences` class. Do not
+  add module-level state that assumes the face is the whole add-on.
 - **Issues first** for anything bigger than a bug fix: say what you want to do and why.
 - **Run the tests** before opening a pull request (see the README). Every new feature needs a headless test in
   `tests/run_tests.py`; pure helpers that need no Blender can go in a plain `tests/test_*.py`.
