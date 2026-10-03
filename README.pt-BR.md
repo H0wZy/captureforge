@@ -26,7 +26,7 @@ aprendendo como eu. Issues, ideias e pull requests são muito bem-vindos.
 - **Split Esquerda/Direita** com falloff suave na linha média (sem degrau no nariz, lábios ou queixo).
 - **Importação de mocap.** CSV do Live Link Face ou CSV genérico (`time` em segundos mais uma coluna por
   shape).
-- **Vídeo para rosto** *(chega na v1)*. Escolha um vídeo, o FaceForge roda o MediaPipe Face Landmarker num Python separado
+- **Vídeo para rosto**. Escolha um vídeo, o FaceForge roda o MediaPipe Face Landmarker num Python separado
   e grava o resultado nas suas shape keys. Funciona com qualquer celular (Android incluso), sem iPhone.
 - **Webcam ao vivo** *(chega na v1)*. Um processo auxiliar manda os 52 valores por UDP no localhost; o Blender aciona as
   shape keys em tempo real e pode gravar numa action.
@@ -68,13 +68,13 @@ aprendendo como eu. Issues, ideias e pull requests são muito bem-vindos.
 4. **Bake.** Selecione as malhas rigadas, `Make target` (cria uma cópia sem rig `<nome>_FF` e o par
    Source/Target), depois `Bake shape keys`. `Skip empty` descarta keys que não mexem naquela malha.
 5. **Split L/R** (preset simétrico): `Split all`. `jawLeft/Right` e `mouthLeft/Right` nunca são divididas.
-6. **Teste** com um CSV de mocap (vídeo e webcam chegam na v1; veja abaixo), depois `Render review sheet`
+6. **Teste** com um CSV de mocap (ou um vídeo; a webcam chega na v1; veja abaixo), depois `Render review sheet`
    (e, mais tarde, o inspetor de qualidade).
 7. Exporte o alvo em FBX ou glTF com shape keys (e normais de blendshape se a engine pedir).
 
 ## Mocap facial sem iPhone
 
-A importação de CSV funciona hoje; **Video to face** e **Live webcam** *chegam na v1* (o script auxiliar `faceforge/helpers/video_to_csv.py` já funciona pela linha de comando).
+A importação de CSV e o **Video to face** funcionam hoje; a **Live webcam** *chega na v1*.
 
 O FaceForge lê um CSV genérico: uma coluna `time` em segundos e uma coluna por shape ARKit, com a mesma
 grafia das shape keys (`eyeBlinkLeft`, ...). Os nomes casam sem diferenciar maiúsculas e há um mapa de
@@ -99,7 +99,7 @@ transforma um Android (ou iPhone) em webcam, o que também serve para o modo ao 
 
 O MediaPipe não produz `tongueOut`, então 51 das 52 shapes são acionadas.
 
-**Webcam ao vivo**: defina o mesmo Python e modelo nas preferências, clique em `Start` e as shape keys
+**Webcam ao vivo** *(chega na v1)*: defina o mesmo Python e modelo nas preferências, clique em `Start` e as shape keys
 seguem o seu rosto. `Record` grava o que chega numa action. `Stop` encerra o auxiliar.
 
 Também dá para rodar o script auxiliar na mão:
@@ -107,7 +107,7 @@ Também dá para rodar o script auxiliar na mão:
 
 ## Headless, linha de comando e agentes de IA
 
-Os módulos de núcleo (`bake`, `markers`, `split`, `mocap`, `sheet`; `quality`, `autofit`, `video` e `live` chegam na v1)
+Os módulos de núcleo (`bake`, `markers`, `split`, `mocap`, `sheet`, `video`; `quality`, `autofit` e `live` chegam na v1)
 recebem objetos explícitos e nunca leem `bpy.context`, então rodam no Blender em segundo plano:
 
 ```python
@@ -126,6 +126,8 @@ bake.bake_shapes(scene, [(head, head_target)], markers.frames_from_markers(scene
 split.split_all(head_target)
 ```
 
+`video.run(python, model, caminho_do_video, csv_saida)` roda o MediaPipe e grava o CSV; `mocap.import_csv(scene, targets, caminho_csv)` aplica nas keys.
+
 A suíte de testes é o melhor conjunto de exemplos: `tests/run_tests.py`.
 
 ## Testes
@@ -139,7 +141,9 @@ python tests/test_video_to_csv.py
 
 O primeiro monta uma cabeça procedural (esfera, armature, olhos, dentes) e imprime
 `FaceForge tests: N passed, M failed`, saindo com código diferente de 0 em falha. O GitHub Actions roda o
-mesmo a cada push. Valide o manifesto com `blender --command extension validate faceforge`.
+mesmo a cada push. Defina `FACEFORGE_PYTHON` (um python com mediapipe e opencv) e `FACEFORGE_MODEL` (o arquivo
+`.task`) para rodar também o teste do auxiliar MediaPipe de verdade; também valem para o `Video to face` quando
+as preferências do add-on estão vazias. Valide o manifesto com `blender --command extension validate faceforge`.
 
 ## Limites conhecidos
 

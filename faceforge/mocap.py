@@ -121,3 +121,20 @@ def apply_mocap(obj, names, times, rows, scene_fps, start_frame=1, mapping=None)
             kp.interpolation = "LINEAR"
         fc.update()
     return [k for _, k in pairs], unmatched
+
+
+def import_csv(scene, targets, path, csv_fps=60.0, start_frame=1, mapping=None):
+    """Read a CSV and key it onto every target that has shape keys.
+    Returns (matched_keys, unmatched_columns, row_count); unmatched = columns no target took."""
+    names, times, rows = read_csv(path, csv_fps)
+    fps = scene.render.fps / scene.render.fps_base
+    matched, unmatched = set(), set(names)
+    for obj in targets:
+        if obj.data.shape_keys is None:
+            continue
+        m, u = apply_mocap(obj, names, times, rows, fps, start_frame, mapping)
+        matched |= set(m)
+        unmatched &= set(u)
+    if not matched:
+        raise ValueError("No CSV column matches a shape key on the targets")
+    return sorted(matched), sorted(unmatched), len(times)

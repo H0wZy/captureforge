@@ -25,7 +25,7 @@ very welcome.
   deform modifiers and Armature are baked exactly as you see them. Every mesh gets the same key names.
 - **Split Left/Right** with a smooth falloff across the midline (no step on the nose, lips or chin).
 - **Mocap import.** CSV from Live Link Face or a generic CSV (`time` in seconds plus one column per shape).
-- **Video to face** *(coming in v1)*. Pick a video, FaceForge runs MediaPipe Face Landmarker in a separate Python and keys
+- **Video to face**. Pick a video, FaceForge runs MediaPipe Face Landmarker in a separate Python and keys
   the result onto your shape keys. Works with any phone (Android friendly), no iPhone needed.
 - **Live webcam** *(coming in v1)*. A helper process streams the 52 scores over localhost UDP; Blender drives the shape keys
   in real time and can record into an action.
@@ -64,13 +64,13 @@ very welcome.
 4. **Bake.** Select the rigged meshes, `Make target` (creates an unrigged copy `<name>_FF` and the
    Source/Target pair), then `Bake shape keys`. `Skip empty` drops keys that do not move a given mesh.
 5. **Split L/R** (symmetric preset): `Split all`. `jawLeft/Right` and `mouthLeft/Right` are never split.
-6. **Test** with a mocap CSV (video and webcam are coming in v1; see below), then `Render review sheet`
+6. **Test** with a mocap CSV (or a video; the webcam is coming in v1; see below), then `Render review sheet`
    (and, later, the quality inspector).
 7. Export the target as FBX or glTF with shape keys (and blendshape normals if your engine wants them).
 
 ## Face mocap without an iPhone
 
-The CSV import works today; **Video to face** and **Live webcam** are *coming in v1* (the helper script `faceforge/helpers/video_to_csv.py` already works from the command line).
+CSV import and **Video to face** work today; **Live webcam** is *coming in v1*.
 
 FaceForge reads a generic CSV: a `time` column in seconds and one column per ARKit shape, in the same
 spelling as the shape keys (`eyeBlinkLeft`, ...). Column names are matched case-insensitively and a
@@ -95,7 +95,7 @@ an Android (or iPhone) into a webcam, which also works for the live mode.
 
 MediaPipe does not produce `tongueOut`, so 51 of the 52 shapes are driven.
 
-**Live webcam**: set the same Python and model in the preferences, press `Start`, and the shape keys follow
+**Live webcam** *(coming in v1)*: set the same Python and model in the preferences, press `Start`, and the shape keys follow
 your face. `Record` keys what it receives into an action. `Stop` ends the helper.
 
 You can also run the helper script yourself:
@@ -103,7 +103,7 @@ You can also run the helper script yourself:
 
 ## Headless, command line and AI agents
 
-The core modules (`bake`, `markers`, `split`, `mocap`, `sheet`; `quality`, `autofit`, `video` and `live` are coming in v1) take explicit objects and never read `bpy.context`, so they run in background Blender:
+The core modules (`bake`, `markers`, `split`, `mocap`, `sheet`, `video`; `quality`, `autofit` and `live` are coming in v1) take explicit objects and never read `bpy.context`, so they run in background Blender:
 
 ```python
 # blender --background rig.blend --python bake_it.py
@@ -121,6 +121,8 @@ bake.bake_shapes(scene, [(head, head_target)], markers.frames_from_markers(scene
 split.split_all(head_target)
 ```
 
+`video.run(python, model, video_path, out_csv)` runs MediaPipe and writes the CSV; `mocap.import_csv(scene, targets, csv_path)` keys it.
+
 The test suite is the best set of examples: `tests/run_tests.py`.
 
 ## Tests
@@ -133,7 +135,9 @@ python tests/test_video_to_csv.py
 ```
 
 The first builds a procedural head (sphere, armature, eyes, teeth) and prints `FaceForge tests: N passed,
-M failed`, exiting non-zero on failure. GitHub Actions runs the same on every push.
+M failed`, exiting non-zero on failure. GitHub Actions runs the same on every push. Set `FACEFORGE_PYTHON` (a python with mediapipe and opencv) and
+`FACEFORGE_MODEL` (the `.task` file) to also run the test that exercises the real MediaPipe helper; they are also
+used by `Video to face` when the add-on preferences are empty.
 Validate the manifest with `blender --command extension validate faceforge`.
 
 ## Known limits

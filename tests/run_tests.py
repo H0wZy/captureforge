@@ -18,7 +18,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))  # repo root, so "import faceforge" finds the package
 
 import faceforge  # noqa: E402
-from faceforge import bake, markers, mocap, presets, sheet, split  # noqa: E402
+from faceforge import bake, markers, mocap, presets, sheet, split, video  # noqa: E402
 
 SAMPLE_CSV = os.path.join(HERE, "sample_livelink.csv")
 POSES = ["jawOpen", "eyeBlink", "browInnerUp"]
@@ -405,6 +405,125 @@ def test_11_split_midline_continuity():
     nearest = np.argmin(((basis[None, :, :] - mirrored[:, None, :]) ** 2).sum(-1), axis=1)
     flip = np.array([-1, 1, 1])
     assert np.allclose(dl[pos], dr[nearest] * flip, atol=1e-5)
+
+
+def blender_python():
+    """A real python executable for subprocess tests: the one bundled with Blender, else PATH."""
+    import shutil
+    for name in ("python.exe", "python3.13", "python3.12", "python3.11", "python"):
+        p = os.path.join(sys.prefix, "bin", name)
+        if os.path.isfile(p):
+            return p
+    return shutil.which("python3") or shutil.which("python")
+
+
+STUB_OK = r"""import sys
+a = sys.argv
+out = a[a.index("-o") + 1]
+assert "--model" in a and "--smooth" in a and "--neutral-seconds" in a and "--gain" in a, a
+open(out, "w").write("time,jawOpen,eyeBlinkLeft,eyeBlinkRight\n0,0,0,0\n0.1,0.5,1,0\n0.2,1,0,1\n")
+print("wrote " + out + ": 3 frames")
+"""
+STUB_FAIL = 'import sys; sys.exit("error: missing package (mediapipe). Install with: pip install -r requirements.txt")'
+
+
+def test_12_video_helper_plumbing():
+    """video.run: errors say what to do; a stub helper proves the command line and CSV hand-off."""
+    py = blender_python()
+    tmp = tempfile.mkdtemp()
+    model, vid, out = (os.path.join(tmp, n) for n in ("m.task", "v.mp4", "o.csv"))
+    for p in (model, vid):
+        open(p, "w").close()
+    for bad in [("", model), (os.path.join(tmp, "nope.exe"), model), (py, os.path.join(tmp, "no.task"))]:
+        try:
+            video.run(bad[0], bad[1], vid, out)
+        except ValueError as e:
+            assert "Setup:" in str(e) and "pip install mediapipe" in str(e), e
+        else:
+            raise AssertionError("expected ValueError")
+    try:
+        video.run(py, model, os.path.join(tmp, "missing.mp4"), out)
+    except ValueError as e:
+        assert "Video not found" in str(e), e
+    else:
+        raise AssertionError("expected ValueError")
+    stub = os.path.join(tmp, "stub.py")
+    open(stub, "w").write(STUB_FAIL)
+    try:
+        video.run(py, model, vid, out, script=stub)
+    except ValueError as e:
+        assert "missing package" in str(e) and "Setup:" in str(e), e
+    else:
+        raise AssertionError("expected ValueError")
+    open(stub, "w").write(STUB_OK)
+    assert "3 frames" in video.run(py, model, vid, out, script=stub)
+    names, times, rows = mocap.read_csv(out)
+    assert names == ["jawOpen", "eyeBlinkLeft", "eyeBlinkRight"] and rows.shape == (3, 3)
+    S["stub"], S["tmp"], S["model"], S["video"] = stub, tmp, model, vid
+
+
+def test_13_video_operator():
+    """faceforge.video_to_face end to end with the stub helper: CSV written and keyed on the targets."""
+    scene, head = S["scene"], S["head"]
+    t = bake.make_target(head)
+    bake.ensure_basis(t)
+    for n in ("jawOpen", "eyeBlinkLeft"):
+        t.shape_key_add(name=n, from_mix=False)
+    saved = {k: os.environ.get(k) for k in ("FACEFORGE_PYTHON", "FACEFORGE_MODEL")}
+    os.environ["FACEFORGE_PYTHON"], os.environ["FACEFORGE_MODEL"] = blender_python(), S["model"]
+    old_script = video.SCRIPT
+    video.SCRIPT = S["stub"]
+    faceforge.register()
+    try:
+        s = scene.faceforge
+        pair = s.pairs.add()
+        pair.source, pair.target = head, t
+        s.video_path = S["video"]
+        assert bpy.ops.faceforge.video_to_face() == {"FINISHED"}
+        assert s.csv_path.endswith("v_faceforge.csv") and os.path.isfile(s.csv_path)
+        assert t.data.shape_keys.animation_data.action is not None
+        jaw = t.data.shape_keys.key_blocks["jawOpen"]
+        for frame, want in ((1, 0.0), (3, 0.5), (6, 1.0)):  # 24 fps: t = 0, 0.1, 0.2 s
+            scene.frame_set(frame)
+            assert abs(jaw.value - want) < 1e-5, (frame, jaw.value)
+        os.environ["FACEFORGE_PYTHON"] = ""
+        try:
+            bpy.ops.faceforge.video_to_face()  # no python configured: clear error, nothing runs
+        except RuntimeError as e:
+            assert "Python for MediaPipe not found" in str(e), e
+        else:
+            raise AssertionError("expected an error report")
+    finally:
+        s.pairs.clear()
+        faceforge.unregister()
+        video.SCRIPT = old_script
+        for k, v in saved.items():
+            os.environ.pop(k, None)
+            if v is not None:
+                os.environ[k] = v
+        t.data.shape_keys.animation_data_clear()
+        scene.frame_set(7)
+        bpy.data.objects.remove(t)
+
+
+def test_14_video_real_mediapipe():
+    """Optional (needs FACEFORGE_PYTHON with mediapipe+opencv and FACEFORGE_MODEL): the real helper
+    must load the model, read a faceless video and report 'no face' cleanly."""
+    py, model = os.environ.get("FACEFORGE_PYTHON"), os.environ.get("FACEFORGE_MODEL")
+    if not (py and model and os.path.isfile(model)):
+        print("  (skipped: set FACEFORGE_PYTHON and FACEFORGE_MODEL)")
+        return
+    import subprocess
+    vid = os.path.join(S["tmp"], "blank.mp4")
+    subprocess.run([py, "-c", "import cv2,numpy as np;w=cv2.VideoWriter(r'%s',cv2.VideoWriter_fourcc(*'mp4v'),"
+                    "10,(320,240));[w.write(np.zeros((240,320,3),np.uint8)) for _ in range(5)];w.release()" % vid],
+                   check=True)
+    try:
+        video.run(py, model, vid, os.path.join(S["tmp"], "blank.csv"))
+    except ValueError as e:
+        assert "no face detected" in str(e), e
+    else:
+        raise AssertionError("expected 'no face detected'")
 
 
 TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_")]

@@ -5,7 +5,7 @@ import tempfile
 
 import bpy
 
-from . import bake, markers, mocap, presets, sheet, split
+from . import bake, markers, mocap, presets, sheet, split, video
 
 
 def preset_names(settings):
@@ -22,6 +22,24 @@ def _targets(context):
     if not out and context.object and context.object.type == "MESH":
         out = [context.object]
     return out
+
+
+def _import_csv(context, path):
+    s = context.scene.faceforge
+    if not os.path.isfile(path):
+        raise ValueError(f"CSV not found: {path}")
+    matched, unmatched, n = mocap.import_csv(context.scene, _targets(context), path, s.csv_fps,
+                                             s.mocap_start_frame, mocap.parse_mapping(s.csv_mapping))
+    msg = f"{len(matched)} keys animated, {n} rows"
+    if unmatched:
+        msg += f"; unmatched columns: {', '.join(unmatched)}"
+    return msg
+
+
+def _pref(context, name, env):
+    """Add-on preference `name`, falling back to an environment variable (CI, headless agents)."""
+    addon = context.preferences.addons.get(__package__)
+    return (getattr(addon.preferences, name, "") if addon else "") or os.environ.get(env, "")
 
 
 class _Op(bpy.types.Operator):
@@ -171,26 +189,40 @@ class FACEFORGE_OT_import_csv(_Op):
     bl_description = "Key the targets' shape keys from a face mocap CSV (Live Link Face or generic)"
 
     def run(self, context):
-        s, scene = context.scene.faceforge, context.scene
-        path = bpy.path.abspath(s.csv_path)
-        if not os.path.isfile(path):
-            raise ValueError(f"CSV not found: {path}")
-        names, times, rows = mocap.read_csv(path, s.csv_fps)
-        fps = scene.render.fps / scene.render.fps_base
-        mapping = mocap.parse_mapping(s.csv_mapping)
-        matched, unmatched = set(), set(names)
-        for obj in _targets(context):
-            if obj.data.shape_keys is None:
-                continue
-            m, u = mocap.apply_mocap(obj, names, times, rows, fps, s.mocap_start_frame, mapping)
-            matched |= set(m)
-            unmatched &= set(u)  # unmatched = no target took the column
-        if not matched:
-            raise ValueError("No CSV column matches a shape key on the targets")
-        msg = f"{len(matched)} keys animated, {len(times)} rows"
-        if unmatched:
-            msg += f"; unmatched columns: {', '.join(sorted(unmatched))}"
-        return msg
+        return _import_csv(context, bpy.path.abspath(context.scene.faceforge.csv_path))
+
+
+class FACEFORGE_OT_video_to_face(_Op):
+    bl_idname = "faceforge.video_to_face"
+    bl_label = "Video to face"
+    bl_description = "Run MediaPipe on the video (separate Python, see Setup instructions) and key the result"
+
+    def run(self, context):
+        s = context.scene.faceforge
+        src = bpy.path.abspath(s.video_path)
+        out = os.path.splitext(src)[0] + "_faceforge.csv"
+        python = bpy.path.abspath(_pref(context, "python_path", "FACEFORGE_PYTHON"))
+        model = bpy.path.abspath(_pref(context, "model_path", "FACEFORGE_MODEL"))
+        info = video.run(python, model, src, out, s.video_smooth, s.video_neutral, s.video_gain)
+        s.csv_path = out
+        return f"{info}. {_import_csv(context, out)}"
+
+
+class FACEFORGE_OT_setup_help(bpy.types.Operator):
+    bl_idname = "faceforge.setup_help"
+    bl_label = "Setup instructions"
+    bl_description = "How to install MediaPipe and the face model for Video to face and Live webcam"
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_popup(self, width=620)
+
+    def draw(self, context):
+        for line in video.SETUP_LINES:
+            self.layout.label(text=line)
+
+    def execute(self, context):
+        self.report({"INFO"}, video.SETUP_TEXT)
+        return {"FINISHED"}
 
 
 class FACEFORGE_OT_render_sheet(_Op):
@@ -212,5 +244,6 @@ classes = (
     FACEFORGE_OT_create_markers, FACEFORGE_OT_key_pose, FACEFORGE_OT_make_target,
     FACEFORGE_OT_pair_add, FACEFORGE_OT_pair_remove, FACEFORGE_OT_bake,
     FACEFORGE_OT_reset_keys, FACEFORGE_OT_split_lr, FACEFORGE_OT_split_all,
-    FACEFORGE_OT_import_csv, FACEFORGE_OT_render_sheet,
+    FACEFORGE_OT_import_csv, FACEFORGE_OT_video_to_face, FACEFORGE_OT_setup_help,
+    FACEFORGE_OT_render_sheet,
 )

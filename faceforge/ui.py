@@ -9,6 +9,22 @@ def _is_mesh(self, obj):
     return obj.type == "MESH"
 
 
+class FFPreferences(bpy.types.AddonPreferences):
+    bl_idname = __package__
+
+    python_path: StringProperty(
+        name="Python", subtype="FILE_PATH",
+        description="python executable that has mediapipe and opencv-python installed (a venv is fine)")
+    model_path: StringProperty(
+        name="Model", subtype="FILE_PATH",
+        description="MediaPipe face_landmarker.task file")
+
+    def draw(self, context):
+        self.layout.prop(self, "python_path")
+        self.layout.prop(self, "model_path")
+        self.layout.operator("faceforge.setup_help")
+
+
 class FFPair(bpy.types.PropertyGroup):
     source: PointerProperty(name="Source", type=bpy.types.Object, poll=_is_mesh,
                             description="Rigged mesh that is posed")
@@ -42,6 +58,13 @@ class FFSettings(bpy.types.PropertyGroup):
                            description="Frame rate of the Timecode column (Live Link Face default 60)")
     csv_mapping: StringProperty(name="Rename", description="Optional column=key pairs, comma separated")
     mocap_start_frame: IntProperty(name="Start frame", default=1)
+    video_path: StringProperty(name="Video", subtype="FILE_PATH")
+    video_smooth: FloatProperty(name="Smooth", default=0.3, min=0.0, max=1.0,
+                                description="Light smoothing; 0 = off, higher lags the motion")
+    video_neutral: FloatProperty(name="Neutral s", default=2.0, min=0.0,
+                                 description="Seconds at the start used as the neutral face (0 = off)")
+    video_gain: FloatProperty(name="Gain", default=1.0, min=0.0,
+                              description="Multiplies every channel after the neutral is removed")
     sheet_path: StringProperty(name="Sheet", subtype="FILE_PATH", default="//faceforge_sheet.png")
     sheet_tile: IntProperty(name="Tile", default=256, min=16)
     sheet_columns: IntProperty(name="Columns", default=8, min=1)
@@ -109,6 +132,16 @@ class FACEFORGE_PT_main(bpy.types.Panel):
         box.operator("faceforge.import_csv")
 
         box = lay.box()
+        box.label(text="4b. Video to face", icon="FILE_MOVIE")
+        box.prop(s, "video_path")
+        row = box.row(align=True)
+        row.prop(s, "video_smooth")
+        row.prop(s, "video_neutral")
+        row.prop(s, "video_gain")
+        box.operator("faceforge.video_to_face", icon="PLAY")
+        box.operator("faceforge.setup_help", icon="QUESTION")
+
+        box = lay.box()
         box.label(text="5. Review sheet", icon="RENDER_STILL")
         box.prop(s, "sheet_path")
         row = box.row(align=True)
@@ -117,4 +150,4 @@ class FACEFORGE_PT_main(bpy.types.Panel):
         box.operator("faceforge.render_sheet")
 
 
-classes = (FFPair, FFSettings, FACEFORGE_UL_pairs, FACEFORGE_PT_main)
+classes = (FFPreferences, FFPair, FFSettings, FACEFORGE_UL_pairs, FACEFORGE_PT_main)
