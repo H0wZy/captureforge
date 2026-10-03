@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+models/
+dist/
+*.zip
+*.blend1
+*.blend@
+*.task
+.vscode/
+.idea/
+.claude/

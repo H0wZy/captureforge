@@ -1,0 +1,39 @@
+name: tests
+
+on: [push, pull_request]
+
+env:
+  BLENDER_VERSION: "4.4.3"
+  BLENDER_SERIES: "4.4"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Blender
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: blender
+          key: blender-${{ env.BLENDER_VERSION }}-linux-x64
+
+      - name: Download Blender
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          curl -fL -o blender.tar.xz "https://download.blender.org/release/Blender${BLENDER_SERIES}/blender-${BLENDER_VERSION}-linux-x64.tar.xz"
+          mkdir blender
+          tar -xf blender.tar.xz -C blender --strip-components=1
+
+      - name: Blender system libraries
+        run: sudo apt-get update && sudo apt-get install -y libxi6 libxkbcommon0 libsm6 libgl1 libxxf86vm1 libxfixes3 libxrender1
+
+      - name: Validate manifest
+        run: ./blender/blender --command extension validate faceforge
+
+      - name: Blender tests
+        run: timeout 600 ./blender/blender --background --factory-startup --python tests/run_tests.py
+
+      - name: Pure Python tests
+        run: python3 tests/test_video_to_csv.py

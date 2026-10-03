@@ -1,0 +1,120 @@
+"""Scene settings (scene.faceforge) and the View3D > Sidebar > FaceForge panel."""
+
+import bpy
+from bpy.props import (BoolProperty, CollectionProperty, EnumProperty, FloatProperty,
+                       IntProperty, PointerProperty, StringProperty)
+
+
+def _is_mesh(self, obj):
+    return obj.type == "MESH"
+
+
+class FFPair(bpy.types.PropertyGroup):
+    source: PointerProperty(name="Source", type=bpy.types.Object, poll=_is_mesh,
+                            description="Rigged mesh that is posed")
+    target: PointerProperty(name="Target", type=bpy.types.Object, poll=_is_mesh,
+                            description="Unrigged duplicate that receives the shape keys")
+
+
+class FFSettings(bpy.types.PropertyGroup):
+    preset: EnumProperty(name="Preset", default="ARKIT_52", items=[
+        ("ARKIT_52", "ARKit 52", "The 52 Apple ARKit blendshapes"),
+        ("ARKIT_SYMMETRIC", "ARKit symmetric (34)", "Left/Right pairs posed once, split later"),
+        ("CUSTOM", "Custom", "Names typed below"),
+    ])
+    custom_names: StringProperty(name="Names", description="Shape names separated by commas")
+    start_frame: IntProperty(name="Start frame", default=1)
+    neutral_frame: IntProperty(name="Neutral frame", default=0)
+    pairs: CollectionProperty(type=FFPair)
+    pairs_index: IntProperty()
+    overwrite: BoolProperty(name="Overwrite keys", default=True)
+    skip_empty: BoolProperty(name="Skip empty", default=False,
+                             description="Do not create keys that do not move this target")
+    split_width: FloatProperty(name="Falloff width", default=0.02, min=0.0, subtype="DISTANCE",
+                               description="Half width of the smooth blend around X = 0")
+    split_suffix: EnumProperty(name="Suffix", default="ARKIT", items=[
+        ("ARKIT", "Left / Right", "eyeBlinkLeft, eyeBlinkRight"),
+        ("BLENDER", ".L / .R", "eyeBlink.L, eyeBlink.R"),
+    ])
+    split_delete_source: BoolProperty(name="Delete source key", default=True)
+    csv_path: StringProperty(name="CSV", subtype="FILE_PATH")
+    csv_fps: FloatProperty(name="CSV FPS", default=60.0, min=1.0,
+                           description="Frame rate of the Timecode column (Live Link Face default 60)")
+    csv_mapping: StringProperty(name="Rename", description="Optional column=key pairs, comma separated")
+    mocap_start_frame: IntProperty(name="Start frame", default=1)
+    sheet_path: StringProperty(name="Sheet", subtype="FILE_PATH", default="//faceforge_sheet.png")
+    sheet_tile: IntProperty(name="Tile", default=256, min=16)
+    sheet_columns: IntProperty(name="Columns", default=8, min=1)
+
+
+class FACEFORGE_UL_pairs(bpy.types.UIList):
+    def draw_item(self, context, layout, data, item, icon, active_data, active_propname):
+        row = layout.row(align=True)
+        row.prop(item, "source", text="")
+        row.prop(item, "target", text="")
+
+
+class FACEFORGE_PT_main(bpy.types.Panel):
+    bl_label = "FaceForge"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "FaceForge"
+
+    def draw(self, context):
+        s = context.scene.faceforge
+        lay = self.layout
+
+        box = lay.box()
+        box.label(text="1. Pose markers", icon="MARKER_HLT")
+        box.prop(s, "preset")
+        if s.preset == "CUSTOM":
+            box.prop(s, "custom_names")
+        row = box.row(align=True)
+        row.prop(s, "neutral_frame")
+        row.prop(s, "start_frame")
+        box.operator("faceforge.create_markers")
+        box.operator("faceforge.key_pose")
+
+        box = lay.box()
+        box.label(text="2. Bake", icon="SHAPEKEY_DATA")
+        box.operator("faceforge.make_target")
+        row = box.row()
+        row.template_list("FACEFORGE_UL_pairs", "", s, "pairs", s, "pairs_index", rows=3)
+        col = row.column(align=True)
+        col.operator("faceforge.pair_add", icon="ADD", text="")
+        col.operator("faceforge.pair_remove", icon="REMOVE", text="")
+        row = box.row()
+        row.prop(s, "overwrite")
+        row.prop(s, "skip_empty")
+        box.operator("faceforge.bake", icon="REC")
+        box.operator("faceforge.reset_keys")
+
+        box = lay.box()
+        box.label(text="3. Split L/R", icon="MOD_MIRROR")
+        box.prop(s, "split_width")
+        row = box.row()
+        row.prop(s, "split_suffix", expand=True)
+        box.prop(s, "split_delete_source")
+        row = box.row(align=True)
+        row.operator("faceforge.split_lr")
+        row.operator("faceforge.split_all")
+
+        box = lay.box()
+        box.label(text="4. Mocap CSV", icon="FILE_TEXT")
+        box.prop(s, "csv_path")
+        row = box.row(align=True)
+        row.prop(s, "csv_fps")
+        row.prop(s, "mocap_start_frame")
+        box.prop(s, "csv_mapping")
+        box.operator("faceforge.import_csv")
+
+        box = lay.box()
+        box.label(text="5. Review sheet", icon="RENDER_STILL")
+        box.prop(s, "sheet_path")
+        row = box.row(align=True)
+        row.prop(s, "sheet_tile")
+        row.prop(s, "sheet_columns")
+        box.operator("faceforge.render_sheet")
+
+
+classes = (FFPair, FFSettings, FACEFORGE_UL_pairs, FACEFORGE_PT_main)

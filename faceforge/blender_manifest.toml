@@ -1,0 +1,19 @@
+schema_version = "1.0.0"
+
+id = "faceforge"
+version = "0.1.0"
+name = "FaceForge"
+tagline = "Bake a posed facial rig into ARKit blendshapes"
+maintainer = "H0wZy"
+type = "add-on"
+tags = ["Animation", "Rigging"]
+
+blender_version_min = "4.4.0"
+
+license = ["SPDX:GPL-3.0-or-later"]
+
+[permissions]
+files = "Read face mocap CSV files and write review sheet images"
+
+[build]
+paths_exclude_pattern = ["__pycache__/", ".*"]
