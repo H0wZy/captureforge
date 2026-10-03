@@ -18,7 +18,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))  # repo root, so "import faceforge" finds the package
 
 import faceforge  # noqa: E402
-from faceforge import bake, markers, mocap, presets, sheet, split, video  # noqa: E402
+from faceforge import bake, markers, mocap, presets, quality, sheet, split, video  # noqa: E402
 
 SAMPLE_CSV = os.path.join(HERE, "sample_livelink.csv")
 POSES = ["jawOpen", "eyeBlink", "browInnerUp"]
@@ -524,6 +524,116 @@ def test_14_video_real_mediapipe():
         assert "no face detected" in str(e), e
     else:
         raise AssertionError("expected 'no face detected'")
+
+
+def quality_mesh():
+    """Unit sphere with hand-made keys: a good Left/Right pair, a bad pair, empty, crushed, flipped,
+    one that pokes into the collider and one that moves away from it."""
+    obj = sphere("QHead", 1.0, (0, 0, 0))
+    obj.shape_key_add(name="Basis", from_mix=False)
+    basis = bake.key_coords(obj.data.shape_keys.reference_key)
+    x, z = basis[:, 0], basis[:, 2]
+    up = np.array([0, 0, 0.1])
+
+    def key(name, d):
+        kb = obj.shape_key_add(name=name, from_mix=False)
+        bake.set_key_coords(kb, basis + d)
+
+    zero = np.zeros_like(basis)
+    key("smileLeft", np.where((x > 0.3)[:, None], up, 0))
+    key("smileRight", np.where((x < -0.3)[:, None], up, 0))
+    key("blinkLeft", np.where((x > 0.3)[:, None], up, 0))
+    key("blinkRight", np.where((x < -0.3)[:, None], up * 1.5, 0))  # 0.05 too strong
+    key("nothing", zero)
+    cap = z > 0.9
+    key("crush", np.where(cap[:, None], (np.array([0, 0, 0.95]) - basis) * 0.95, 0))  # cap shrinks to a dot
+    key("flip", np.where(cap[:, None], np.stack([-2 * x, zero[:, 1], zero[:, 2]], axis=1), 0))  # cap mirrored
+    key("poke", np.where((z > 0.8)[:, None], -basis * 0.2, 0))
+    key("away", np.where((z > 0.8)[:, None], basis * 0.2, 0))
+    return obj
+
+
+def test_15_quality_inspector():
+    scene = S["scene"]
+    q = quality_mesh()
+    collider = sphere("QCollider", 0.9, (0, 0, 0))
+    bpy.context.view_layer.update()
+    dg = bpy.context.evaluated_depsgraph_get()
+    rep = quality.inspect(q, dg, collider=collider)
+    by = {r["name"]: r for r in rep["keys"]}
+    assert rep["neutral_inside"] == 0 and rep["unmatched_vertices"] == 0, rep
+    assert by["nothing"]["empty"] and "empty" in by["nothing"]["problems"]
+    assert not by["smileLeft"]["empty"] and abs(by["smileLeft"]["max_delta"] - 0.1) < 1e-6
+    assert by["smileLeft"]["sym_error"] < 1e-5 and by["smileRight"]["sym_error"] < 1e-5
+    assert by["smileLeft"]["problems"] == [], by["smileLeft"]
+    assert abs(by["blinkLeft"]["sym_error"] - 0.05) < 1e-5 and "asymmetric" in by["blinkLeft"]["problems"]
+    assert by["nothing"]["sym_error"] is None
+    assert by["crush"]["crushed"] > 0 and "crushed triangles" in by["crush"]["problems"]
+    assert by["flip"]["flipped"] > 0 and "flipped normals" in by["flip"]["problems"]
+    assert by["smileLeft"]["flipped"] == 0 and by["smileLeft"]["crushed"] == 0
+    assert by["poke"]["inside"] > 0 and abs(by["poke"]["depth"] - 0.1) < 0.02, by["poke"]
+    assert "inside collider" in by["poke"]["problems"]
+    assert by["away"]["inside"] == 0 and by["smileLeft"]["inside"] == 0
+    # vertex group restricts the collider test to those vertices
+    vg = q.vertex_groups.new(name="low")
+    vg.add([v.index for v in q.data.vertices if v.co.z < -0.5], 1.0, "REPLACE")
+    rep2 = quality.inspect(q, dg, collider=collider, vertex_group="low")
+    assert {r["name"]: r["inside"] for r in rep2["keys"]}["poke"] == 0
+    try:
+        quality.inspect(q, dg, collider=collider, vertex_group="nope")
+    except ValueError as e:
+        assert "nope" in str(e)
+    else:
+        raise AssertionError("expected ValueError")
+    big = sphere("QBig", 1.05, (0, 0, 0))  # swallows the whole head already at neutral
+    bpy.context.view_layer.update()
+    rep3 = quality.inspect(q, bpy.context.evaluated_depsgraph_get(), collider=big)
+    assert rep3["neutral_inside"] == len(q.data.vertices) and all(r["inside"] == 0 for r in rep3["keys"])
+    bpy.data.objects.remove(big)
+    # no collider: inside is never reported
+    assert all(r["inside"] == 0 for r in quality.inspect(q, dg)["keys"])
+    # report files
+    tmp = tempfile.mkdtemp()
+    import json
+    txt, js = os.path.join(tmp, "r.txt"), os.path.join(tmp, "r.json")
+    quality.write_report(rep, txt)
+    quality.write_report([rep], js)
+    text = open(txt, encoding="utf-8").read()
+    assert "blinkLeft" in text and "!! blinkLeft" in text and "ok smileLeft" in text, text
+    assert json.load(open(js, encoding="utf-8"))[0]["keys"][0]["name"] == "smileLeft"
+    # heatmap
+    attr = quality.delta_heatmap(q, "smileLeft")
+    col = np.empty(len(q.data.vertices) * 4, dtype=np.float32)
+    attr.data.foreach_get("color", col)
+    col = col.reshape(-1, 4)
+    moved = np.linalg.norm(bake.key_coords(q.data.shape_keys.key_blocks["smileLeft"]) -
+                           bake.key_coords(q.data.shape_keys.reference_key), axis=1) > 1e-6
+    assert np.allclose(col[moved][:, :3], [1, 0, 0], atol=1e-4) and np.allclose(col[~moved][:, :3], [0, 0, 1], atol=1e-4)
+    assert q.data.color_attributes.active_color.name == "FF_delta_smileLeft"
+    # operators
+    faceforge.register()
+    try:
+        s = scene.faceforge
+        s.pairs.clear()
+        pair = s.pairs.add()
+        pair.source = pair.target = q
+        s.quality_collider, s.quality_group = collider, ""
+        s.report_path = os.path.join(tmp, "op.json")
+        assert bpy.ops.faceforge.inspect() == {"FINISHED"}
+        assert len(s.report) == 9 and sum(i.bad for i in s.report) == 6, [(i.name, i.text) for i in s.report]
+        assert json.load(open(s.report_path))[0]["object"] == "QHead"
+        bpy.context.view_layer.objects.active = q
+        q.active_shape_key_index = 2
+        assert bpy.ops.faceforge.heatmap() == {"FINISHED"}
+        assert "FF_delta_smileRight" in q.data.color_attributes
+        s.pairs.clear()
+        s.quality_collider = None
+    finally:
+        faceforge.unregister()
+    quality.clear_heatmaps(q)
+    assert len(q.data.color_attributes) == 0
+    bpy.data.objects.remove(q)
+    bpy.data.objects.remove(collider)
 
 
 TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_")]

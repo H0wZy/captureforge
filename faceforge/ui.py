@@ -32,6 +32,12 @@ class FFPair(bpy.types.PropertyGroup):
                             description="Unrigged duplicate that receives the shape keys")
 
 
+class FFReportRow(bpy.types.PropertyGroup):
+    name: StringProperty()
+    text: StringProperty()
+    bad: BoolProperty()
+
+
 class FFSettings(bpy.types.PropertyGroup):
     preset: EnumProperty(name="Preset", default="ARKIT_52", items=[
         ("ARKIT_52", "ARKit 52", "The 52 Apple ARKit blendshapes"),
@@ -65,9 +71,26 @@ class FFSettings(bpy.types.PropertyGroup):
                                  description="Seconds at the start used as the neutral face (0 = off)")
     video_gain: FloatProperty(name="Gain", default=1.0, min=0.0,
                               description="Multiplies every channel after the neutral is removed")
+    quality_collider: PointerProperty(name="Collider", type=bpy.types.Object, poll=_is_mesh,
+                                      description="Closed mesh the keys must not poke into "
+                                                  "(eyeball, teeth); empty = skip the check")
+    quality_group: StringProperty(name="Group", description="Only test this vertex group of the "
+                                                            "inspected mesh (eyelids, lips); empty = all")
+    quality_sym_tol: FloatProperty(name="Symmetry tol", default=0.001, min=0.0, subtype="DISTANCE",
+                                   description="Largest allowed Left/Right mismatch")
+    report_path: StringProperty(name="Report file", subtype="FILE_PATH",
+                                description="Optional .txt or .json file for the report")
+    report: CollectionProperty(type=FFReportRow)
+    report_index: IntProperty()
     sheet_path: StringProperty(name="Sheet", subtype="FILE_PATH", default="//faceforge_sheet.png")
     sheet_tile: IntProperty(name="Tile", default=256, min=16)
     sheet_columns: IntProperty(name="Columns", default=8, min=1)
+
+
+class FACEFORGE_UL_report(bpy.types.UIList):
+    def draw_item(self, context, layout, data, item, icon, active_data, active_propname):
+        layout.alert = item.bad
+        layout.label(text=f"{item.name}: {item.text}", icon="ERROR" if item.bad else "CHECKMARK")
 
 
 class FACEFORGE_UL_pairs(bpy.types.UIList):
@@ -142,7 +165,18 @@ class FACEFORGE_PT_main(bpy.types.Panel):
         box.operator("faceforge.setup_help", icon="QUESTION")
 
         box = lay.box()
-        box.label(text="5. Review sheet", icon="RENDER_STILL")
+        box.label(text="5. Quality inspector", icon="VIEWZOOM")
+        box.prop(s, "quality_collider")
+        box.prop(s, "quality_group")
+        box.prop(s, "quality_sym_tol")
+        box.prop(s, "report_path")
+        row = box.row(align=True)
+        row.operator("faceforge.inspect", icon="ZOOM_ALL")
+        row.operator("faceforge.heatmap", icon="COLOR")
+        box.template_list("FACEFORGE_UL_report", "", s, "report", s, "report_index", rows=4)
+
+        box = lay.box()
+        box.label(text="6. Review sheet", icon="RENDER_STILL")
         box.prop(s, "sheet_path")
         row = box.row(align=True)
         row.prop(s, "sheet_tile")
@@ -150,4 +184,4 @@ class FACEFORGE_PT_main(bpy.types.Panel):
         box.operator("faceforge.render_sheet")
 
 
-classes = (FFPreferences, FFPair, FFSettings, FACEFORGE_UL_pairs, FACEFORGE_PT_main)
+classes = (FFPreferences, FFPair, FFReportRow, FFSettings, FACEFORGE_UL_report, FACEFORGE_UL_pairs, FACEFORGE_PT_main)

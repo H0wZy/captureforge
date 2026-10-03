@@ -29,7 +29,7 @@ very welcome.
   the result onto your shape keys. Works with any phone (Android friendly), no iPhone needed.
 - **Live webcam** *(coming in v1)*. A helper process streams the 52 scores over localhost UDP; Blender drives the shape keys
   in real time and can record into an action.
-- **Quality inspector** *(coming in v1)*. Per-key report (empty keys, max delta, left/right symmetry error, mesh-inside-mesh
+- **Quality inspector.** Per-key report (empty keys, max delta, left/right symmetry error, mesh-inside-mesh
   checks, flipped normals, crushed triangles), a delta heatmap as a color attribute, and a txt/json report.
 - **Auto rig fit** *(coming in v1)*. Renders the head, finds the face landmarks with MediaPipe, and places a lean face rig
   (jaw, eyes, lids, brows, mouth, cheeks, tongue) with automatic weights, or fits a Rigify face metarig.
@@ -65,8 +65,21 @@ very welcome.
    Source/Target pair), then `Bake shape keys`. `Skip empty` drops keys that do not move a given mesh.
 5. **Split L/R** (symmetric preset): `Split all`. `jawLeft/Right` and `mouthLeft/Right` are never split.
 6. **Test** with a mocap CSV (or a video; the webcam is coming in v1; see below), then `Render review sheet`
-   (and, later, the quality inspector).
+   and the quality inspector.
 7. Export the target as FBX or glTF with shape keys (and blendshape normals if your engine wants them).
+
+## Quality inspector
+
+Select the targets and press `Inspect keys` (panel section 5). For every shape key it reports:
+
+- **empty keys** and the **max delta** (largest vertex move, object units);
+- **left/right symmetry error**: each `...Left` key mirrored against its `...Right` (and `.L`/`.R`) partner;
+- **mesh inside mesh**: pick a closed **Collider** mesh (the eyeball, the teeth) and optionally a vertex **Group**
+  of the inspected mesh (eyelids, lips); vertices the key pushes into the collider are counted with the deepest one;
+- **flipped normals** and **crushed triangles** (area under 10 % of the neutral one).
+
+Problems are listed in the panel and written to the **Report file** (`.txt` or `.json`). `Delta heatmap` paints the
+active shape key's delta into a color attribute (blue = still, red = most moved; Solid shading, Color: Attribute).
 
 ## Face mocap without an iPhone
 
@@ -103,7 +116,7 @@ You can also run the helper script yourself:
 
 ## Headless, command line and AI agents
 
-The core modules (`bake`, `markers`, `split`, `mocap`, `sheet`, `video`; `quality`, `autofit` and `live` are coming in v1) take explicit objects and never read `bpy.context`, so they run in background Blender:
+The core modules (`bake`, `markers`, `split`, `mocap`, `sheet`, `video`, `quality`; `autofit` and `live` are coming in v1) take explicit objects and do not depend on the UI context, so they run in background Blender:
 
 ```python
 # blender --background rig.blend --python bake_it.py
@@ -122,6 +135,8 @@ split.split_all(head_target)
 ```
 
 `video.run(python, model, video_path, out_csv)` runs MediaPipe and writes the CSV; `mocap.import_csv(scene, targets, csv_path)` keys it.
+
+`quality.inspect(target, depsgraph, collider=eyeball)` returns the per-key report as a dict, `quality.write_report(report, "report.json")` saves it.
 
 The test suite is the best set of examples: `tests/run_tests.py`.
 

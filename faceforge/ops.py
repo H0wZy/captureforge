@@ -5,7 +5,7 @@ import tempfile
 
 import bpy
 
-from . import bake, markers, mocap, presets, sheet, split, video
+from . import bake, markers, mocap, presets, quality, sheet, split, video
 
 
 def preset_names(settings):
@@ -225,6 +225,46 @@ class FACEFORGE_OT_setup_help(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class FACEFORGE_OT_inspect(_Op):
+    bl_idname = "faceforge.inspect"
+    bl_label = "Inspect keys"
+    bl_description = "Check every shape key of the targets (empty, symmetry, inside collider, flipped, crushed)"
+
+    def run(self, context):
+        s = context.scene.faceforge
+        depsgraph = context.evaluated_depsgraph_get()
+        reports = [quality.inspect(o, depsgraph, s.quality_collider, s.quality_group or None, s.quality_sym_tol)
+                   for o in _targets(context) if o.data.shape_keys and o != s.quality_collider]
+        if not reports:
+            raise ValueError("No target with shape keys (make targets and bake first)")
+        s.report.clear()
+        for r in reports:
+            for row in r["keys"]:
+                item = s.report.add()
+                item.name, item.text, item.bad = f"{r['object']}/{row['name']}", quality.summary_line(row), bool(row["problems"])
+        if s.report_path:
+            quality.write_report(reports, bpy.path.abspath(s.report_path))
+        bad = sum(1 for i in s.report if i.bad)
+        return f"{len(s.report)} keys checked, {bad} with problems"
+
+
+class FACEFORGE_OT_heatmap(_Op):
+    bl_idname = "faceforge.heatmap"
+    bl_label = "Delta heatmap"
+    bl_description = ("Color attribute of the active shape key's delta on the active mesh "
+                      "(blue = still, red = most moved); view it with Solid shading > Color > Attribute")
+
+    @classmethod
+    def poll(cls, context):
+        o = context.object
+        return o is not None and o.type == "MESH" and o.active_shape_key_index > 0
+
+    def run(self, context):
+        obj = context.object
+        quality.delta_heatmap(obj, obj.active_shape_key.name)
+        return f"Color attribute {quality.HEATMAP_PREFIX}{obj.active_shape_key.name} created"
+
+
 class FACEFORGE_OT_render_sheet(_Op):
     bl_idname = "faceforge.render_sheet"
     bl_label = "Render review sheet"
@@ -245,5 +285,5 @@ classes = (
     FACEFORGE_OT_pair_add, FACEFORGE_OT_pair_remove, FACEFORGE_OT_bake,
     FACEFORGE_OT_reset_keys, FACEFORGE_OT_split_lr, FACEFORGE_OT_split_all,
     FACEFORGE_OT_import_csv, FACEFORGE_OT_video_to_face, FACEFORGE_OT_setup_help,
-    FACEFORGE_OT_render_sheet,
+    FACEFORGE_OT_inspect, FACEFORGE_OT_heatmap, FACEFORGE_OT_render_sheet,
 )

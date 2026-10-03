@@ -30,7 +30,7 @@ aprendendo como eu. Issues, ideias e pull requests são muito bem-vindos.
   e grava o resultado nas suas shape keys. Funciona com qualquer celular (Android incluso), sem iPhone.
 - **Webcam ao vivo** *(chega na v1)*. Um processo auxiliar manda os 52 valores por UDP no localhost; o Blender aciona as
   shape keys em tempo real e pode gravar numa action.
-- **Inspetor de qualidade** *(chega na v1)*. Relatório por key (keys vazias, delta máximo, erro de simetria esquerda/direita,
+- **Inspetor de qualidade.** Relatório por key (keys vazias, delta máximo, erro de simetria esquerda/direita,
   malha dentro de malha, normais invertidas, triângulos esmagados), mapa de calor do delta como atributo de
   cor e relatório em txt/json.
 - **Auto rig fit** *(chega na v1)*. Renderiza a cabeça, acha os pontos do rosto com o MediaPipe e posiciona um rig facial
@@ -69,8 +69,22 @@ aprendendo como eu. Issues, ideias e pull requests são muito bem-vindos.
    Source/Target), depois `Bake shape keys`. `Skip empty` descarta keys que não mexem naquela malha.
 5. **Split L/R** (preset simétrico): `Split all`. `jawLeft/Right` e `mouthLeft/Right` nunca são divididas.
 6. **Teste** com um CSV de mocap (ou um vídeo; a webcam chega na v1; veja abaixo), depois `Render review sheet`
-   (e, mais tarde, o inspetor de qualidade).
+   e o inspetor de qualidade.
 7. Exporte o alvo em FBX ou glTF com shape keys (e normais de blendshape se a engine pedir).
+
+## Inspetor de qualidade
+
+Selecione os alvos e clique em `Inspect keys` (seção 5 do painel). Para cada shape key ele informa:
+
+- **keys vazias** e o **delta máximo** (maior deslocamento de vértice, em unidades do objeto);
+- **erro de simetria esquerda/direita**: cada key `...Left` espelhada contra a sua par `...Right` (e `.L`/`.R`);
+- **malha dentro de malha**: escolha uma malha **Collider** fechada (globo ocular, dentes) e, se quiser, um
+  **Group** de vértices da malha inspecionada (pálpebras, lábios); vértices que a key empurra para dentro do
+  collider são contados, com o mais fundo;
+- **normais invertidas** e **triângulos esmagados** (área abaixo de 10 % da neutra).
+
+Os problemas aparecem no painel e vão para o **Report file** (`.txt` ou `.json`). `Delta heatmap` pinta o delta
+da shape key ativa num atributo de cor (azul = parado, vermelho = mais movido; Solid, Color: Attribute).
 
 ## Mocap facial sem iPhone
 
@@ -107,8 +121,8 @@ Também dá para rodar o script auxiliar na mão:
 
 ## Headless, linha de comando e agentes de IA
 
-Os módulos de núcleo (`bake`, `markers`, `split`, `mocap`, `sheet`, `video`; `quality`, `autofit` e `live` chegam na v1)
-recebem objetos explícitos e nunca leem `bpy.context`, então rodam no Blender em segundo plano:
+Os módulos de núcleo (`bake`, `markers`, `split`, `mocap`, `sheet`, `video`, `quality`; `autofit` e `live` chegam na v1)
+recebem objetos explícitos e não dependem do contexto da interface, então rodam no Blender em segundo plano:
 
 ```python
 # blender --background rig.blend --python bake_it.py
@@ -127,6 +141,8 @@ split.split_all(head_target)
 ```
 
 `video.run(python, model, caminho_do_video, csv_saida)` roda o MediaPipe e grava o CSV; `mocap.import_csv(scene, targets, caminho_csv)` aplica nas keys.
+
+`quality.inspect(alvo, depsgraph, collider=globo_ocular)` devolve o relatório por key como dict, `quality.write_report(relatorio, "report.json")` salva.
 
 A suíte de testes é o melhor conjunto de exemplos: `tests/run_tests.py`.
 
