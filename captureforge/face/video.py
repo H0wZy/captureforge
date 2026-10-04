@@ -29,14 +29,17 @@ def check_setup(python, model):
 
 
 def run(python, model, video, out_csv, smooth=0.3, neutral_seconds=2.0, gain=1.0,
-        script=None, timeout=None):
+        script=None, timeout=None, crop=None):
     """Run the helper on a video and write out_csv. Returns the helper's last stdout line.
+    `crop`: a BodyForge landmarks.npz whose per-frame head box limits the face tracker to the head (body + face).
     Blocks until done. ponytail: no progress bar or cancel; a modal Popen poll if videos get long."""
     check_setup(python, model)
     if not os.path.isfile(video):
         raise ValueError(f"Video not found: {video}")
     cmd = [python, script or SCRIPT, video, "-o", out_csv, "--model", model, "--smooth", str(smooth),
            "--neutral-seconds", str(neutral_seconds), "--gain", str(gain)]
+    if crop:
+        cmd += ["--crop", crop]
     last = _exec(cmd, python, timeout)
     if not os.path.isfile(out_csv):
         raise ValueError("The helper finished but wrote no CSV")

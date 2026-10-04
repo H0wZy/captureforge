@@ -82,7 +82,9 @@ class BODYFORGE_PT_main(bpy.types.Panel):
         row = box.row(align=True)
         row.prop(s, "keep_travel", toggle=True)
         row.prop(s, "use_hands", toggle=True)
-        box.operator("bodyforge.video_to_body", icon="PLAY")
+        row = box.row(align=True)
+        row.operator("bodyforge.video_to_body", icon="PLAY")
+        row.operator("bodyforge.video_to_body_and_face", icon="USER")
         box.prop(s, "landmarks_path")
         box.operator("bodyforge.landmarks_to_body", icon="FILE_TICK")
         if s.warnings:

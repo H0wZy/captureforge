@@ -105,8 +105,8 @@ def _import_deps():
     return cv2, np, mp, mp_python, vision
 
 
-def detect(video, model, want_landmarks):
-    """Run Face Landmarker over every frame.
+def detect(video, model, want_landmarks, boxes=None):
+    """Run Face Landmarker over every frame (inside the per-frame normalized box when `boxes` is given).
     Returns (times_s, rows, names, landmarks): rows[i] is None when no face; landmarks[i] is an
     (N, 2) array of normalized points or None (only filled when want_landmarks)."""
     cv2, np, mp, mp_python, vision = _import_deps()
@@ -131,8 +131,10 @@ def detect(video, model, want_landmarks):
                 ms = i * 1000.0 / fps
             ms = max(ms, last_ms + 1)    # MediaPipe VIDEO mode needs strictly increasing ms
             last_ms = ms
+            if boxes is not None:
+                frame = crop_frame(frame, box_at(boxes, i))
             img = mp.Image(image_format=mp.ImageFormat.SRGB,
-                           data=cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                           data=np.ascontiguousarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)))
             res = lm.detect_for_video(img, int(ms))
             if res.face_blendshapes:
                 scores.append({c.category_name: c.score for c in res.face_blendshapes[0]})
@@ -177,7 +179,7 @@ def write_preview(video, out, rows, names, marks):
     vw.release()
 
 
-def main():
+def build_parser():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("video")
     ap.add_argument("-o", "--output", required=True)
@@ -186,11 +188,55 @@ def main():
     ap.add_argument("--neutral-seconds", type=float, default=2.0)
     ap.add_argument("--gain", type=float, default=1.0)
     ap.add_argument("--preview", help="write a debug video with landmarks and the top 5 shapes")
-    a = ap.parse_args()
+    ap.add_argument("--crop", help="BodyForge landmarks.npz with a per-frame head box: track the face inside that "
+                                   "crop (a face in a full-body frame is small)")
+    return ap
+
+
+def box_at(boxes, i):
+    """The head box of frame i (the last one when the video has more frames than boxes)."""
+    return boxes[min(i, len(boxes) - 1)]
+
+
+def read_boxes(path):
+    """Per-frame head boxes (n, 4) of a BodyForge landmark file, gaps filled with the last box (leading gap: the
+    first box). ValueError when the file has no head box."""
+    import numpy as np
+    with np.load(path, allow_pickle=False) as d:
+        if "head_box" not in d.files:
+            raise ValueError(f"{path} has no head box: run the BodyForge helper with --head-box")
+        boxes = d["head_box"].astype(np.float32)
+    good = ~np.isnan(boxes).any(axis=1)
+    if not good.any():
+        raise ValueError(f"{path} has no head box in any frame")
+    idx = np.maximum.accumulate(np.where(good, np.arange(len(boxes)), -1))
+    idx[idx < 0] = int(np.argmax(good))
+    return boxes[idx]
+
+
+def crop_frame(frame, box):
+    """The part of an image (rows, columns, ...) inside a normalized (x0, y0, x1, y1) box, at least 1 pixel."""
+    h, w = frame.shape[:2]
+    x0, y0 = int(round(box[0] * w)), int(round(box[1] * h))
+    x1, y1 = max(int(round(box[2] * w)), x0 + 1), max(int(round(box[3] * h)), y0 + 1)
+    return frame[y0:y1, x0:x1]
+
+
+def main():
+    a = build_parser().parse_args()
     if not 0 <= a.smooth <= 1:
         _fail("--smooth must be between 0 and 1")
+    boxes = None
+    if a.crop:
+        try:
+            boxes = read_boxes(a.crop)
+        except (OSError, ValueError) as e:
+            _fail(str(e))
+        if a.preview:
+            print("warning: --preview is not drawn with --crop", file=sys.stderr)
+            a.preview = None
 
-    times, raw, names, marks = detect(a.video, a.model, bool(a.preview))
+    times, raw, names, marks = detect(a.video, a.model, bool(a.preview), boxes)
     valid = [r is not None for r in raw]
     try:
         rows, missing = hold_gaps(raw)

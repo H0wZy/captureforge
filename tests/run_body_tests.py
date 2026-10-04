@@ -465,6 +465,67 @@ def test_19_hands_flow_through_the_operator_to_the_finger_bones():
         raise AssertionError("expected the setup message")
 
 
+def test_20_body_and_face_share_one_timeline_and_a_tiny_face_is_skipped():
+    import importlib
+    from captureforge.body import ops as body_ops
+    face_video = importlib.import_module("captureforge.face.video")
+    sys.path.insert(0, os.path.join(os.path.dirname(HERE), "captureforge", "body", "helpers"))
+    import pose_to_landmarks as ptl
+    clean()
+    scene = bpy.context.scene
+    bpy.ops.bodyforge.create_reference()
+    s = scene.bodyforge
+    clip = fx.hands_up_clip(neutral=45, raise_=30, hold=30)
+    size = clip.size
+
+    def boxes(scale):
+        out = []
+        for row in clip.pose_image:
+            box = ptl.head_box(row, size)
+            c = np.array([(box[0] + box[2]) / 2, (box[1] + box[3]) / 2])
+            half = np.array([(box[2] - box[0]) / 2, (box[3] - box[1]) / 2]) * scale
+            out.append([c[0] - half[0], c[1] - half[1], c[0] + half[0], c[1] + half[1]])
+        return np.array(out, np.float32)
+
+    s.landmarks_path = clip.save(os.path.join(TMP, "face_ok.npz"), head_box=boxes(1.0))
+    assert bpy.ops.bodyforge.landmarks_to_body() == {"FINISHED"}
+    body_action = s.armature.animation_data.action
+    head = bpy.data.objects.new("FaceMesh", bpy.data.meshes.new("FaceMesh"))
+    head.data.from_pydata([(0, 0, 0), (1, 0, 0), (0, 1, 0)], [], [(0, 1, 2)])
+    bpy.context.scene.collection.objects.link(head)
+    head.shape_key_add(name="Basis")
+    head.shape_key_add(name="jawOpen")
+    bpy.context.view_layer.objects.active = head
+    calls = []
+
+    def fake_run(python, model, video, out_csv, smooth=0.3, neutral_seconds=2.0, gain=1.0, script=None, timeout=None,
+                 crop=None):
+        calls.append(crop)
+        with open(out_csv, "w", newline="") as f:
+            f.write("time,jawOpen\n" + "".join(f"{i / 30.0:.6f},{(i % 10) / 10.0}\n" for i in range(105)))
+        return "fake"
+
+    video = os.path.join(TMP, "face.mp4")
+    open(video, "wb").write(b"x")
+    real_run, face_video.run = face_video.run, fake_run
+    try:
+        msg = body_ops.apply_face(bpy.context, video, s.landmarks_path)
+        assert calls == [s.landmarks_path], "the face tracker runs on the head box of the body landmarks"
+        keys = head.data.shape_keys.animation_data.action
+        body_range = tuple(int(v) for v in body_action.frame_range)
+        face_range = tuple(int(v) for v in keys.frame_range)
+        assert face_range == body_range == (1, 105), (face_range, body_range)
+        assert scene.render.fps == 30 and "jawOpen" in msg or "keys animated" in msg
+
+        calls.clear()
+        s.landmarks_path = clip.save(os.path.join(TMP, "face_tiny.npz"), head_box=boxes(0.3))
+        msg = body_ops.apply_face(bpy.context, video, s.landmarks_path)
+        assert calls == [] and "too small" in msg and "skipped" in msg, msg
+        assert s.armature.animation_data.action == body_action, "the body result is unaffected"
+    finally:
+        face_video.run = real_run
+
+
 def test_11_real_mediapipe_end_to_end():
     python, model = os.environ.get("BODYFORGE_PYTHON"), os.environ.get("BODYFORGE_POSE_MODEL")
     if not (python and model and os.path.isfile(python) and os.path.isfile(model)):

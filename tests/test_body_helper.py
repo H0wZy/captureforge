@@ -184,6 +184,73 @@ def test_hands_go_to_the_nearer_pose_wrist():
     assert vis.tolist() == [0.0, 0.0] and np.isnan(hands).all()
 
 
+# ------------------------------------------------------------------ face crop for body + face (US6)
+
+FACE_HELPERS = os.path.join(fx.ROOT, "captureforge", "face", "helpers")
+
+
+def face_helper():
+    sys.path.insert(0, FACE_HELPERS)
+    try:
+        import importlib
+        return importlib.import_module("video_to_csv")
+    finally:
+        sys.path.remove(FACE_HELPERS)
+
+
+def face_points(cx=0.5, cy=0.2, ear=0.06):
+    """Normalized pose landmarks 0..10 of a face centred at (cx, cy), `ear` apart horizontally (a 1080x1920 frame)."""
+    pts = np.zeros((33, 3))
+    pts[:11, 0], pts[:11, 1] = cx, cy
+    pts[0] = (cx, cy + 0.006, 0)
+    pts[7], pts[8] = (cx - ear / 2, cy, 0), (cx + ear / 2, cy, 0)
+    pts[1:7, 0] = cx + np.linspace(-0.02, 0.02, 6)
+    pts[1:7, 1] = cy - 0.012
+    pts[9], pts[10] = (cx - 0.012, cy + 0.02, 0), (cx + 0.012, cy + 0.02, 0)
+    return pts
+
+
+def test_head_box_is_a_square_around_the_face_in_pixels():
+    size = (1080, 1920)
+    pts = face_points()
+    box = fx.implemented(ptl.head_box(pts, size))
+    x0, y0, x1, y1 = box
+    assert 0 <= x0 < x1 <= 1 and 0 <= y0 < y1 <= 1
+    assert abs((x1 - x0) * size[0] - (y1 - y0) * size[1]) < 1.0, "square in pixels"
+    assert (pts[:11, 0] >= x0).all() and (pts[:11, 0] <= x1).all() and (pts[:11, 1] >= y0).all() and (pts[:11, 1] <= y1).all()
+    assert (x1 - x0) * size[0] > 2 * 0.06 * size[0], "bigger than the ear to ear distance"
+    edge = ptl.head_box(face_points(cx=0.98, cy=0.03), size)
+    assert edge.min() >= 0 and edge.max() <= 1, "clipped to the picture"
+
+
+def test_face_helper_crop_argument_reads_the_boxes():
+    ff = face_helper()
+    args = fx.implemented(getattr(ff, "build_parser", lambda: None)()).parse_args(["v.mp4", "-o", "o.csv"])
+    assert args.crop is None
+    assert ff.build_parser().parse_args(["v.mp4", "-o", "o.csv", "--crop", "lm.npz"]).crop == "lm.npz"
+    boxes = np.full((5, 4), np.nan, np.float32)
+    boxes[1] = (0.25, 0.1, 0.5, 0.3)
+    boxes[3] = (0.3, 0.2, 0.6, 0.4)
+    path = os.path.join(TMP, "boxes.npz")
+    fx.write_landmarks(path, np.arange(5) / 30.0, np.zeros((5, 33, 3)), head_box=boxes)
+    got = ff.read_boxes(path)
+    assert got.shape == (5, 4)
+    assert np.allclose(got[0], boxes[1]), "leading frames without a box use the first one"
+    assert np.allclose(got[2], boxes[1]) and np.allclose(got[4], boxes[3]), "gaps hold the last box"
+    frame = np.arange(100 * 200 * 3).reshape(100, 200, 3)
+    crop = ff.crop_frame(frame, (0.25, 0.1, 0.5, 0.3))
+    assert crop.shape == (20, 50, 3) and (crop == frame[10:30, 50:100]).all()
+    assert ff.crop_frame(frame, (0.0, 0.0, 1.0, 1.0)).shape == frame.shape
+    no_boxes = os.path.join(TMP, "nobox.npz")
+    fx.write_landmarks(no_boxes, np.arange(5) / 30.0, np.zeros((5, 33, 3)))
+    try:
+        ff.read_boxes(no_boxes)
+    except ValueError as e:
+        assert "head box" in str(e)
+    else:
+        raise AssertionError("expected ValueError")
+
+
 # ------------------------------------------------------------------ add-on side runner (video.py)
 
 FAKE = """

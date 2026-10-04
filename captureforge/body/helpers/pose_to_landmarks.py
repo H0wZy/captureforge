@@ -24,7 +24,6 @@ except ImportError:  # reported as "missing package" when work starts; --help st
     np = None
 
 HELPER_VERSION = "1"
-BOX_MARGIN = 0.6        # head box grows by this fraction of its size on every side
 LEFT_WRIST, RIGHT_WRIST = 15, 16
 HAND_MATCH = 0.2        # normalized image distance within which a detected hand belongs to a pose wrist
 SLOW_AFTER = 15         # frames timed before deciding whether the heavy model is too slow
@@ -62,12 +61,15 @@ def most_prominent(poses):
     return max(range(len(poses)), key=lambda i: area(poses[i]))
 
 
-def head_box(image33):
-    """[x0, y0, x1, y1] (normalized, clipped to the frame) around the face landmarks 0..10, with margin."""
-    p = np.asarray(image33)[:11, :2]
-    lo, hi = p.min(axis=0), p.max(axis=0)
-    pad = (hi - lo) * BOX_MARGIN
-    lo, hi = np.clip(lo - pad, 0, 1), np.clip(hi + pad, 0, 1)
+def head_box(image33, size=(1, 1)):
+    """[x0, y0, x1, y1] (normalized, clipped to the frame) of a square in pixels around the face landmarks 0..10:
+    the side is 2.4 times the ear to ear distance, so the whole head with some margin is inside for the face tracker."""
+    scale = np.array(size, float)
+    p = np.asarray(image33)[:11, :2] * scale
+    extent = float((p.max(axis=0) - p.min(axis=0)).max())
+    side = max(2.4 * float(np.linalg.norm(p[7] - p[8])), 1.5 * extent)
+    centre = p.mean(axis=0)
+    lo, hi = np.clip((centre - side / 2) / scale, 0, 1), np.clip((centre + side / 2) / scale, 0, 1)
     return np.array([lo[0], lo[1], hi[0], hi[1]], np.float32)
 
 
@@ -193,7 +195,7 @@ def _run_pass(a, deps, model, rec_hands, can_fall_back):
                 image = imgs[k]
                 world = to_landmark_axes(np.array([(p.x, p.y, p.z) for p in res.pose_world_landmarks[k]]))
                 vis = np.array([p.visibility if p.visibility is not None else 1.0 for p in res.pose_landmarks[k]])
-                box = head_box(image) if a.head_box else None
+                box = head_box(image, size) if a.head_box else None
                 if hands:
                     _assign_hands(hands.detect_for_video(img, int(ms)), image, hw, hv)
             rec.add(ms / 1000.0, world, image, vis, hw, hv, box)

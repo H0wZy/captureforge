@@ -6,6 +6,8 @@ import bpy
 from bpy.props import BoolProperty, StringProperty
 
 from .. import prefs
+from ..face import ops as face_ops
+from ..face import video as face_video
 from . import apply, calibrate, clipops, export, landmarks, report, rigtools, solve, video
 
 HELPER_JOB = None  # the running Install helper job, polled by a timer
@@ -60,6 +62,25 @@ def apply_landmarks(context, path):
     s.landmarks_path = path
     return f"{name}: {len(result.clip.times)} frames at {result.clip.fps:g} fps on {arm.name}" + (
         f" ({len(warnings)} warnings)" if warnings else "")
+
+
+def apply_face(context, src, landmarks_path):
+    """Key the face of the same video with FaceForge, on the head box of the body landmarks, so the face and the
+    body share one timeline (same video timestamps, same scene rate and start frame). A face that is too small is
+    skipped with a message; the body result is never touched. Returns the message for the user."""
+    lm = landmarks.read(landmarks_path)
+    if lm.head_box is None:
+        raise ValueError("The landmark file has no head box: run Video to body with Body and face.")
+    if landmarks.face_too_small(lm):
+        return (f"The face is too small in this video ({landmarks.face_pixels(lm):.0f} px, at least "
+                f"{landmarks.MIN_FACE_PX} are needed): the face part is skipped. Film closer or in higher resolution.")
+    python = _abs(prefs.pref(context, "python_path", "FACEFORGE_PYTHON") or os.environ.get("BODYFORGE_PYTHON", ""))
+    model = _abs(prefs.pref(context, "model_path", "FACEFORGE_MODEL"))
+    out = os.path.splitext(src)[0] + ".face.csv"
+    face_video.run(python, model, src, out, crop=landmarks_path)
+    face = context.scene.faceforge
+    face.csv_path, face.mocap_start_frame = out, context.scene.frame_start
+    return "Face: " + face_ops._import_csv(context, out)
 
 
 class _Op(bpy.types.Operator):
@@ -231,12 +252,10 @@ class BODYFORGE_OT_landmarks_to_body(_Op):
         return apply_landmarks(context, path)
 
 
-class BODYFORGE_OT_video_to_body(bpy.types.Operator):
-    bl_idname = "bodyforge.video_to_body"
-    bl_label = "Video to body"
-    bl_description = ("Run the pose helper on the video (separate Python, see Install helper), solve the motion and key "
-                      "it on the armature. Esc cancels")
+class _VideoOp(bpy.types.Operator):
+    """Shared logic of the two video operators (not registered itself: it has no bl_idname)."""
     bl_options = {"REGISTER", "UNDO"}
+    with_face = False  # the body-and-face operator also keys the face from the same video
 
     def _start(self, context):
         s = context.scene.bodyforge
@@ -246,8 +265,15 @@ class BODYFORGE_OT_video_to_body(bpy.types.Operator):
         if s.use_hands and not hands:
             raise ValueError("Hands are on but no hand model is set.\n" + video.SETUP_TEXT)
         out = os.path.splitext(src)[0] + ".landmarks.npz"
-        job = video.start(python, model, src, out, hands_model=hands if s.use_hands else None)
+        job = video.start(python, model, src, out, hands_model=hands if s.use_hands else None,
+                          head_box=self.with_face)
         return job, out
+
+    def _finish(self, context, out):
+        msg = apply_landmarks(context, out)
+        if self.with_face:
+            msg += " " + apply_face(context, _abs(context.scene.bodyforge.video_path), out)
+        return msg
 
     def execute(self, context):
         """Blocking run (scripts, tests, agents); the button uses the modal invoke."""
@@ -257,7 +283,7 @@ class BODYFORGE_OT_video_to_body(bpy.types.Operator):
                 import time
                 time.sleep(0.05)
             self._early_warnings(job)
-            msg = apply_landmarks(context, out)
+            msg = self._finish(context, out)
         except ValueError as e:
             self.report({"ERROR"}, str(e))
             return {"CANCELLED"}
@@ -309,12 +335,27 @@ class BODYFORGE_OT_video_to_body(bpy.types.Operator):
             return {"RUNNING_MODAL"}
         self._end(context)
         try:
-            msg = apply_landmarks(context, self._out)
+            msg = self._finish(context, self._out)
         except ValueError as e:
             self.report({"ERROR"}, str(e))
             return {"CANCELLED"}
         self.report({"INFO"}, f"{result['frames']} frames tracked. {msg}")
         return {"FINISHED"}
+
+
+class BODYFORGE_OT_video_to_body(_VideoOp):
+    bl_idname = "bodyforge.video_to_body"
+    bl_label = "Video to body"
+    bl_description = ("Run the pose helper on the video (separate Python, see Install helper), solve the motion and key "
+                      "it on the armature. Esc cancels")
+
+
+class BODYFORGE_OT_video_to_body_and_face(_VideoOp):
+    bl_idname = "bodyforge.video_to_body_and_face"
+    bl_label = "Video to body and face"
+    bl_description = ("Like Video to body, then key the face of the same video with FaceForge (inside the head crop "
+                      "of the body tracking) on the same timeline. FaceForge needs its face model; Esc cancels")
+    with_face = True
 
 
 def _poll_install():
@@ -388,4 +429,4 @@ class BODYFORGE_OT_install_helper(bpy.types.Operator):
 
 classes = (BODYFORGE_OT_cleanup, BODYFORGE_OT_in_place, BODYFORGE_OT_trim, BODYFORGE_OT_loop, BODYFORGE_OT_mirror,
            BODYFORGE_OT_report, BODYFORGE_OT_export_unity, BODYFORGE_OT_create_reference, BODYFORGE_OT_check_helper, BODYFORGE_OT_landmarks_to_body,
-           BODYFORGE_OT_video_to_body, BODYFORGE_OT_install_helper)
+           BODYFORGE_OT_video_to_body, BODYFORGE_OT_video_to_body_and_face, BODYFORGE_OT_install_helper)

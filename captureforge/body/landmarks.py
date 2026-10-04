@@ -172,3 +172,20 @@ def capture_check(lm):
     if people > 1:
         warnings.append(f"{people} people were seen in one frame; the most prominent one is tracked.")
     return warnings
+
+
+# ------------------------------------------------------------------ face crop (body + face from one video)
+
+MIN_FACE_PX = 96  # a face smaller than this in the crop is too small for the face tracker
+
+
+def face_pixels(lm):
+    """Median side in pixels of the head box (None when the file has none): how big the face is for the tracker."""
+    if lm.head_box is None or not lm.valid.any():
+        return None
+    return float(np.median((lm.head_box[lm.valid, 2] - lm.head_box[lm.valid, 0]) * lm.size[0]))
+
+
+def face_too_small(lm):
+    px = face_pixels(lm)
+    return px is not None and px < MIN_FACE_PX

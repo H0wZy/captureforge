@@ -167,5 +167,15 @@ def test_capture_check_flags_low_confidence_and_several_people():
     assert landmarks.capture_check(lm) == [], "the gaps are reported separately"
 
 
+def test_face_pixels_is_the_median_head_box_side():
+    lm = good_lm()
+    assert fx.implemented(getattr(landmarks, "face_pixels", None))(lm) is None, "no head box in the file"
+    lm.head_box = np.tile(np.array([0.4, 0.1, 0.5, 0.15], np.float32), (60, 1))  # 0.1 * 1080 wide
+    assert abs(landmarks.face_pixels(lm) - 108.0) < 1e-3
+    assert landmarks.face_too_small(lm) is False
+    lm.head_box = np.tile(np.array([0.4, 0.1, 0.45, 0.15], np.float32), (60, 1))  # 54 px: too small to track
+    assert landmarks.face_too_small(lm) is True
+
+
 if __name__ == "__main__":
     fx.run_all(globals())
