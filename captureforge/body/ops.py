@@ -256,12 +256,19 @@ class BODYFORGE_OT_video_to_body(bpy.types.Operator):
             while (result := job.poll()) is None:
                 import time
                 time.sleep(0.05)
+            self._early_warnings(job)
             msg = apply_landmarks(context, out)
         except ValueError as e:
             self.report({"ERROR"}, str(e))
             return {"CANCELLED"}
         self.report({"INFO"}, f"{result['frames']} frames tracked. {msg}")
         return {"FINISHED"}
+
+    def _early_warnings(self, job):
+        if job.info and not getattr(self, "_warned", False):
+            self._warned = True
+            for w in landmarks.container_warnings(job.info.get("fps")):
+                self.report({"WARNING"}, w)
 
     def invoke(self, context, event):
         try:
@@ -289,6 +296,7 @@ class BODYFORGE_OT_video_to_body(bpy.types.Operator):
             return {"CANCELLED"}
         if event.type != "TIMER":
             return {"PASS_THROUGH"}
+        self._early_warnings(self._job)  # a low frame rate is known as soon as the helper opens the video
         try:
             result = self._job.poll()
         except ValueError as e:

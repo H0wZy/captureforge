@@ -197,7 +197,8 @@ def test_07_operators_create_the_reference_rig_and_solve_a_landmark_file():
     assert bpy.ops.bodyforge.landmarks_to_body() == {"FINISHED"}
     act = arm.animation_data.action
     clip = apply.read_clip(act, "raw")
-    assert len(clip.times) == 105 and scene.frame_end == 105 and s.warnings == ""
+    assert len(clip.times) == 105 and scene.frame_end == 105
+    assert "neutral" not in s.warnings and "No person" not in s.warnings, s.warnings  # raised hands leave the picture
     _, head = solve.fk(clip.rot, clip.hips_pos)
     ix = profile.INDEX
     assert head[-1, ix["LeftHand"], 2] > head[-1, ix["Head"], 2] + 0.2, "wrists above the head"

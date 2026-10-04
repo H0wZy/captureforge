@@ -160,6 +160,7 @@ def _run_pass(a, deps, model, rec_hands, can_fall_back):
     if a.max_seconds and total:
         total = min(total, int(a.max_seconds * fps))
     limit = int(a.max_seconds * fps) if a.max_seconds else None
+    _say({"info": {"fps": round(fps, 3), "frames": total, "rotation": rotation}})  # early, for capture warnings
     try:
         pose = vision.PoseLandmarker.create_from_options(vision.PoseLandmarkerOptions(
             base_options=mp_python.BaseOptions(model_asset_path=model),

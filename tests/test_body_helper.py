@@ -199,6 +199,7 @@ if mode == "fail5":
 if mode == "hang":
     print(json.dumps({"progress": 0.1, "frame": 3, "frames": 30}), flush=True)
     time.sleep(60)
+print(json.dumps({"info": {"fps": 24.0, "frames": 30, "rotation": 90}}), flush=True)
 for i in (10, 20, 30):
     print(json.dumps({"progress": i / 30, "frame": i, "frames": 30}), flush=True)
 np.savez(out, version=1)
@@ -244,6 +245,16 @@ def test_video_run_reports_progress_and_returns_the_summary():
     summary = fx.implemented(mod.run(sys.executable, model, video, out, on_progress=seen.append, script=script))
     assert summary["done"] and summary["frames"] == 30 and summary["frames_without_person"] == 1
     assert seen[-1] == 1.0 and seen == sorted(seen) and len(seen) >= 2 and os.path.isfile(out)
+
+
+def test_video_job_exposes_the_early_video_info():
+    import time
+    mod = video_module()
+    script, video, model = fake_setup("ok")
+    job = fx.implemented(mod.start(sys.executable, model, video, os.path.join(TMP, "info.npz"), script=script))
+    while job.poll() is None:
+        time.sleep(0.02)
+    assert job.info == {"fps": 24.0, "frames": 30, "rotation": 90}, job.info
 
 
 def test_video_run_error_messages():

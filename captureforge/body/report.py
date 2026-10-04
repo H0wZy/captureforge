@@ -7,7 +7,7 @@ import zlib
 
 import numpy as np
 
-from . import calibrate, profile, quat, solve
+from . import calibrate, landmarks, profile, quat, solve
 
 LOW_CONF = 0.5
 LIMIT_TOLERANCE = 1.0  # degrees outside a joint limit that still count as inside
@@ -43,7 +43,7 @@ def build(clip, lm=None, calib=None):
             a, b = profile.LANDMARK_MAP[bone]
             seg = np.linalg.norm(calibrate.point(lm.pose_world, b) - calibrate.point(lm.pose_world, a), axis=-1)
             drift[bone] = float(np.abs(seg / ref - 1).max())
-        for w in list(calib.warnings) + list(lm.meta.get("warnings", [])):
+        for w in landmarks.capture_check(lm) + list(calib.warnings) + list(lm.meta.get("warnings", [])):
             if w not in warnings:
                 warnings.append(w)
     violations = {}

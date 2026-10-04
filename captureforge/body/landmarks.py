@@ -137,3 +137,38 @@ def resample(lm, fps=None):
                       pose_vis=lerp(lm.pose_vis), hands_world=lerp(lm.hands_world),
                       hands_vis=lerp(lm.hands_vis), head_box=lerp(lm.head_box),
                       valid=valid, gaps=_runs(~valid), fps=fps)
+
+
+# ------------------------------------------------------------------ capture check
+
+MIN_FPS = 30.0
+OUT_OF_FRAME = 0.10  # share of frames with a body point outside the picture that earns a warning
+MIN_VISIBILITY = 0.6
+
+
+def container_warnings(fps):
+    """Warnings that need only the frame rate (known before the helper has tracked anything)."""
+    if fps and fps < MIN_FPS - 0.5:
+        return [f"The video is {fps:g} fps; 30 fps or more tracks fast moves better (60 fps for dancing)."]
+    return []
+
+
+def capture_check(lm):
+    """Warnings about a take that is likely to track badly: low frame rate, body out of the picture, low confidence,
+    several people. [] for a good take. Frames held for lack of a person are left out (they are reported as gaps)."""
+    measured = (lm.n - 1) / (lm.times[-1] - lm.times[0])
+    warnings = container_warnings(min(measured, lm.fps_source))
+    if lm.valid.any():
+        body = lm.pose_image[lm.valid][:, L_SHOULDER:R_FOOT + 1, :2]
+        out = float(((body < 0) | (body > 1)).any(axis=(1, 2)).mean())
+        if out > OUT_OF_FRAME:
+            warnings.append(f"Part of the body leaves the picture in {out:.0%} of the frames: film from further "
+                            "away so head to feet stay in view, or expect weak limbs there.")
+        mean_vis = float(lm.pose_vis[lm.valid][:, L_SHOULDER:R_FOOT + 1].mean())
+        if mean_vis < MIN_VISIBILITY:
+            warnings.append(f"Low confidence (mean visibility {mean_vis:.2f}): more light, a plainer background "
+                            "and tighter clothes help.")
+    people = int(lm.meta.get("people_seen", 1))
+    if people > 1:
+        warnings.append(f"{people} people were seen in one frame; the most prominent one is tracked.")
+    return warnings

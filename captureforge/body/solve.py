@@ -383,7 +383,8 @@ def from_file(path, fps=30.0, keep_source_fps=False, neutral_seconds=1.5, keep_t
     warnings are plain-text lines for the user (no person for some frames, no neutral pose, estimator notes)."""
     lm_file = lm.resample(lm.read(path), None if keep_source_fps else fps)
     calib = calibration.calibrate(lm_file, neutral_seconds)
-    warnings = list(calib.warnings) + list(lm_file.meta.get("warnings", []))
+    warnings = lm.capture_check(lm_file) + list(calib.warnings) + list(lm_file.meta.get("warnings", []))
+    warnings = [w for i, w in enumerate(warnings) if w not in warnings[:i]]
     for start, end in lm_file.gaps:
         warnings.append(f"No person found in frames {start} to {end - 1}: the pose is bridged across the gap.")
     if use_hands and lm_file.hands_world is None:

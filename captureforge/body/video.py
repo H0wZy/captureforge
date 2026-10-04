@@ -50,6 +50,7 @@ class Job:
 
     def __init__(self, cmd, out_npz, python):
         self.out, self.progress, self.summary, self.cancelled, self.status = out_npz, 0.0, None, False, ""
+        self.info = None  # the helper's early {"fps", "frames", "rotation"} of the video
         self._err = []
         try:
             self.proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -69,6 +70,8 @@ class Job:
                 self.status = line.strip() or self.status  # plain text: what the setup script is doing
                 continue
             if isinstance(msg, dict):
+                if "info" in msg:
+                    self.info = msg["info"]
                 if "progress" in msg:
                     self.progress = float(msg["progress"])
                 if msg.get("done") or "python" in msg:  # the helper's summary, or setup_env's final paths

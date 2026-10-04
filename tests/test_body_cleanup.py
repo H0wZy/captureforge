@@ -268,7 +268,7 @@ def test_report_bone_drift_and_warnings_from_the_landmarks():
     want = float(np.abs(seg / calib.bone_len["LeftForeArm"] - 1).max())
     assert abs(rep["bone_drift"]["LeftForeArm"] - want) < 1e-6 and 0.11 < want < 0.13
     assert rep["bone_drift"]["RightForeArm"] < 1e-4
-    assert rep["warnings"] == ["The video is 24 fps."]
+    assert "The video is 24 fps." in rep["warnings"], rep["warnings"]
 
 
 def test_report_json_roundtrip_and_text():

@@ -117,5 +117,55 @@ def test_resample_keep_source_rate():
     assert np.allclose(out.pose_world[:, 0, 0], out.times, atol=1e-5)
 
 
+# ------------------------------------------------------------------ capture check (T041)
+
+def good_lm(n=60, fps=30.0, **kw):
+    path = make(n, fps, **kw)
+    lm = landmarks.read(path)
+    lm.pose_image[:] = 0.5  # everything well inside the picture
+    return lm
+
+
+def test_capture_check_is_quiet_on_a_good_take():
+    lm = good_lm()
+    assert fx.implemented(landmarks.capture_check(lm)) == []
+
+
+def test_capture_check_flags_a_low_frame_rate():
+    for fps in (24.0, 25.0):
+        warns = fx.implemented(landmarks.capture_check(good_lm(60, fps)))
+        assert len(warns) == 1 and "fps" in warns[0] and "30" in warns[0], warns
+    assert landmarks.capture_check(good_lm(120, 60.0)) == []
+    # the timestamps decide, not the nominal rate the container claims
+    lm = good_lm(60, 24.0, fps_source=30.0)
+    assert any("24" in w for w in landmarks.capture_check(lm))
+    assert landmarks.container_warnings(24.0) and not landmarks.container_warnings(30.0)
+
+
+def test_capture_check_flags_a_body_out_of_frame():
+    lm = good_lm()
+    lm.pose_image[:30, 27:33, 1] = 1.2  # the feet are below the picture for half the clip
+    warns = fx.implemented(landmarks.capture_check(lm))
+    assert len(warns) == 1 and "frame" in warns[0] and "50%" in warns[0], warns
+    lm.pose_image[:] = 0.5
+    lm.pose_image[:3, 11, 0] = -0.1  # three stray frames are not worth a warning
+    assert landmarks.capture_check(lm) == []
+
+
+def test_capture_check_flags_low_confidence_and_several_people():
+    lm = good_lm()
+    lm.pose_vis[:, 11:33] = 0.3
+    warns = fx.implemented(landmarks.capture_check(lm))
+    assert len(warns) == 1 and "confidence" in warns[0], warns
+    lm = good_lm()
+    lm.meta["people_seen"] = 3
+    warns = landmarks.capture_check(lm)
+    assert len(warns) == 1 and "3 people" in warns[0], warns
+    lm = good_lm()
+    lm.valid[:] = False  # frames held for lack of a person do not count towards the picture or the confidence
+    lm.pose_vis[:] = 0.0
+    assert landmarks.capture_check(lm) == [], "the gaps are reported separately"
+
+
 if __name__ == "__main__":
     fx.run_all(globals())
