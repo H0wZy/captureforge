@@ -25,10 +25,10 @@ seen failing before the implementation exists. Pure tests run with `python tests
 
 **Purpose**: package skeleton, shared preferences and CI wiring.
 
-- [ ] T001 Create the `captureforge/body/` package skeleton (`__init__.py` with `register()`/`unregister()`, empty `helpers/`) and call it from `captureforge/__init__.py`, keeping the add-on loadable with an empty module
-- [ ] T002 [P] Move the single `AddonPreferences` class to `captureforge/prefs.py` (face property names unchanged, add `pose_model` and `hand_model`), point `captureforge/face/ui.py` at it, and keep the existing face tests green in `tests/run_tests.py`
-- [ ] T003 [P] Wire CI in `.github/workflows/ci.yml`: install numpy in the unit stage (dev-only), run `tests/test_body_*.py` there, and add a `tests/run_body_tests.py` step to the Blender 4.4 and 5.2 matrix
-- [ ] T004 [P] Write `tests/fixtures_body.py`: synthetic skeleton generators that write the landmark schema (hands up, planted foot, injected jitter, loopable dance cycle, open and closed hand), no real captures
+- [x] T001 Create the `captureforge/body/` package skeleton (`__init__.py` with `register()`/`unregister()`, empty `helpers/`) and call it from `captureforge/__init__.py`, keeping the add-on loadable with an empty module
+- [x] T002 [P] Move the single `AddonPreferences` class to `captureforge/prefs.py` (face property names unchanged, add `pose_model` and `hand_model`), point `captureforge/face/ui.py` at it, and keep the existing face tests green in `tests/run_tests.py`
+- [x] T003 [P] Wire CI in `.github/workflows/ci.yml`: install numpy in the unit stage (dev-only), run `tests/test_body_*.py` there, and add a `tests/run_body_tests.py` step to the Blender 4.4 and 5.2 matrix
+- [x] T004 [P] Write `tests/fixtures_body.py`: synthetic skeleton generators that write the landmark schema (hands up, planted foot, injected jitter, loopable dance cycle, open and closed hand), no real captures
 
 ---
 
@@ -38,10 +38,10 @@ seen failing before the implementation exists. Pure tests run with `python tests
 
 **CRITICAL**: no user story starts before this phase is done.
 
-- [ ] T005 [P] Write failing tests for the landmark reader in `tests/test_body_landmarks.py` (required keys, bad version, shape mismatch, NaN gap hold, variable frame rate resample, keep source rate)
-- [ ] T006 Implement `captureforge/body/landmarks.py` (read and validate `landmarks.npz`, hold gaps and report them, resample to the scene or source rate) per `contracts/landmarks-file.md`
-- [ ] T007 [P] Write failing tests for the body profile in `tests/test_body_solve.py` (name normalising with and without `mixamorig:`, the 15 required bones, validate returns missing and extra, landmark map covers every required bone)
-- [ ] T008 Implement `captureforge/body/profile.py` (bone list with parents, landmark map, twist references, joint limits, `normalise`, `validate`) per `data-model.md`
+- [x] T005 [P] Write failing tests for the landmark reader in `tests/test_body_landmarks.py` (required keys, bad version, shape mismatch, NaN gap hold, variable frame rate resample, keep source rate)
+- [x] T006 Implement `captureforge/body/landmarks.py` (read and validate `landmarks.npz`, hold gaps and report them, resample to the scene or source rate) per `contracts/landmarks-file.md`
+- [x] T007 [P] Write failing tests for the body profile in `tests/test_body_solve.py` (name normalising with and without `mixamorig:`, the 15 required bones, validate returns missing and extra, landmark map covers every required bone)
+- [x] T008 Implement `captureforge/body/profile.py` (bone list with parents, landmark map, twist references, joint limits, `normalise`, `validate`) per `data-model.md`
 
 **Checkpoint**: a synthetic landmark file loads, resamples and validates; the profile is queryable.
 
@@ -55,22 +55,22 @@ seen failing before the implementation exists. Pure tests run with `python tests
 
 ### Tests for User Story 1 (write first, see them fail)
 
-- [ ] T009 [P] [US1] Write failing tests for calibration in `tests/test_body_solve.py` (bone lengths, up vector, facing, floor from a neutral window, rig-default fallback with a warning)
-- [ ] T010 [P] [US1] Write failing tests for the solver in `tests/test_body_solve.py` (swing from segment direction, twist from the second vector, hips height and sway, world-to-Blender axes, sign-continuous quaternions, hands-up fixture)
-- [ ] T011 [P] [US1] Write failing tests for the helper CLI in `tests/test_body_helper.py` (argument parser works without mediapipe, exit code 3 and the `missing package` message, `setup_env.py --dry-run` plan text, landmark writer round-trips through the reader)
-- [ ] T012 [P] [US1] Write failing Blender tests in `tests/run_body_tests.py` (reference armature has the profile bones in T-pose, profile validation lists missing and extra bones, applying a clip writes one key set per frame)
+- [x] T009 [P] [US1] Write failing tests for calibration in `tests/test_body_solve.py` (bone lengths, up vector, facing, floor from a neutral window, rig-default fallback with a warning)
+- [x] T010 [P] [US1] Write failing tests for the solver in `tests/test_body_solve.py` (swing from segment direction, twist from the second vector, hips height and sway, world-to-Blender axes, sign-continuous quaternions, hands-up fixture)
+- [x] T011 [P] [US1] Write failing tests for the helper CLI in `tests/test_body_helper.py` (argument parser works without mediapipe, exit code 3 and the `missing package` message, `setup_env.py --dry-run` plan text, landmark writer round-trips through the reader)
+- [x] T012 [P] [US1] Write failing Blender tests in `tests/run_body_tests.py` (reference armature has the profile bones in T-pose, profile validation lists missing and extra bones, applying a clip writes one key set per frame)
 
 ### Implementation for User Story 1
 
-- [ ] T013 [P] [US1] Implement `captureforge/body/calibrate.py` (neutral-window calibration and fallback) so T009 passes
-- [ ] T014 [US1] Implement `captureforge/body/solve.py` (positions to local rotations in the target rest frame, hips height and sway, bone-length re-projection, joint-limit clamp, low-confidence hold, horizontal hips travel dropped unless the keep-travel option is set) so T010 passes
-- [ ] T015 [P] [US1] Implement `captureforge/body/helpers/pose_to_landmarks.py` (MediaPipe Pose in video mode, real timestamps, rotation metadata, axis conversion, progress lines, `people_seen` recorded in `meta`, write at the end) per `contracts/helper-cli.md`
-- [ ] T016 [P] [US1] Implement `captureforge/body/helpers/setup_env.py` (plan text, `--yes` creates the shared venv, installs packages, downloads the models into the venv folder after consent, prints the paths)
-- [ ] T017 [US1] Implement `captureforge/body/video.py` (subprocess runner, `check_setup`, progress callback, cancel, setup text, `ValueError` with the helper's last lines) mirroring `captureforge/face/video.py`
-- [ ] T018 [P] [US1] Implement `captureforge/body/rigtools.py` (create the reference armature, validate a user armature against the profile) so the T012 rig tests pass
-- [ ] T019 [US1] Implement `captureforge/body/apply.py` (write the solved clip as an action at the scene rate, store the raw clip on the action, read it back) so the T012 apply test passes
-- [ ] T020 [US1] Implement thin operators in `captureforge/body/ops.py` (`bodyforge.install_helper`, `check_helper`, `create_reference`, `video_to_body`) calling only core functions; the helper runs are modal with a progress readout and Esc to cancel (FR-019)
-- [ ] T021 [US1] Implement `captureforge/body/ui.py` (the `Scene.bodyforge` PropertyGroup and the BodyForge panel in the shared CaptureForge tab, setup message when the helper is missing) and register it in `captureforge/body/__init__.py`
+- [x] T013 [P] [US1] Implement `captureforge/body/calibrate.py` (neutral-window calibration and fallback) so T009 passes
+- [x] T014 [US1] Implement `captureforge/body/solve.py` (positions to local rotations in the target rest frame, hips height and sway, bone-length re-projection, joint-limit clamp, low-confidence hold, horizontal hips travel dropped unless the keep-travel option is set) so T010 passes
+- [x] T015 [P] [US1] Implement `captureforge/body/helpers/pose_to_landmarks.py` (MediaPipe Pose in video mode, real timestamps, rotation metadata, axis conversion, progress lines, `people_seen` recorded in `meta`, write at the end) per `contracts/helper-cli.md`
+- [x] T016 [P] [US1] Implement `captureforge/body/helpers/setup_env.py` (plan text, `--yes` creates the shared venv, installs packages, downloads the models into the venv folder after consent, prints the paths)
+- [x] T017 [US1] Implement `captureforge/body/video.py` (subprocess runner, `check_setup`, progress callback, cancel, setup text, `ValueError` with the helper's last lines) mirroring `captureforge/face/video.py`
+- [x] T018 [P] [US1] Implement `captureforge/body/rigtools.py` (create the reference armature, validate a user armature against the profile) so the T012 rig tests pass
+- [x] T019 [US1] Implement `captureforge/body/apply.py` (write the solved clip as an action at the scene rate, store the raw clip on the action, read it back) so the T012 apply test passes
+- [x] T020 [US1] Implement thin operators in `captureforge/body/ops.py` (`bodyforge.install_helper`, `check_helper`, `create_reference`, `video_to_body`) calling only core functions; the helper runs are modal with a progress readout and Esc to cancel (FR-019)
+- [x] T021 [US1] Implement `captureforge/body/ui.py` (the `Scene.bodyforge` PropertyGroup and the BodyForge panel in the shared CaptureForge tab, setup message when the helper is missing) and register it in `captureforge/body/__init__.py`
 
 **Checkpoint**: video (or a synthetic landmark file) to an animated armature; MVP of the module.
 
@@ -84,19 +84,19 @@ seen failing before the implementation exists. Pure tests run with `python tests
 
 ### Tests for User Story 2 (write first, see them fail)
 
-- [ ] T022 [P] [US2] Write failing tests for filters in `tests/test_body_cleanup.py` (One Euro causal behavior, zero-phase Butterworth has no lag and removes injected jitter, quaternion sign continuity, peak amplitude kept)
-- [ ] T023 [P] [US2] Write failing tests for foot contact and lock in `tests/test_body_cleanup.py` (planted frames detected with hysteresis, skate under the limit, bone lengths kept, per-foot and per-range switch off)
-- [ ] T024 [P] [US2] Write failing tests for clip operations in `tests/test_body_cleanup.py` (in place keeps height and removes drift, trim range, loop closer matches first and last frame, mirror swaps left and right correctly)
-- [ ] T025 [P] [US2] Write failing tests for the report in `tests/test_body_cleanup.py` (skate in cm/s, bone drift, limit violations, jitter, low-confidence ranges, json round-trip) and for the filmstrip in `tests/run_body_tests.py`
+- [x] T022 [P] [US2] Write failing tests for filters in `tests/test_body_cleanup.py` (One Euro causal behavior, zero-phase Butterworth has no lag and removes injected jitter, quaternion sign continuity, peak amplitude kept)
+- [x] T023 [P] [US2] Write failing tests for foot contact and lock in `tests/test_body_cleanup.py` (planted frames detected with hysteresis, skate under the limit, bone lengths kept, per-foot and per-range switch off)
+- [x] T024 [P] [US2] Write failing tests for clip operations in `tests/test_body_cleanup.py` (in place keeps height and removes drift, trim range, loop closer matches first and last frame, mirror swaps left and right correctly)
+- [x] T025 [P] [US2] Write failing tests for the report in `tests/test_body_cleanup.py` (skate in cm/s, bone drift, limit violations, jitter, low-confidence ranges, json round-trip) and for the filmstrip in `tests/run_body_tests.py`
 
 ### Implementation for User Story 2
 
-- [ ] T026 [P] [US2] Implement `captureforge/body/filters.py` (One Euro, 2nd-order Butterworth run forward and backward with numpy only, quaternion smoothing) so T022 passes
-- [ ] T027 [P] [US2] Implement `captureforge/body/contact.py` (contact detection with thresholds and minimum duration, foot lock with a two-bone leg solve inside limits) so T023 passes
-- [ ] T028 [P] [US2] Implement `captureforge/body/clipops.py` (in place, trim, loop closer, mirror on a `MotionClip`) so T024 passes
-- [ ] T029 [P] [US2] Implement `captureforge/body/report.py` (metrics, `report.json`, text summary) so the T025 pure tests pass
-- [ ] T030 [US2] Extend `captureforge/body/apply.py` with re-writing the action from an edited clip and the filmstrip render (a grid of evenly spaced frames to PNG) so the T025 Blender test passes
-- [ ] T031 [US2] Add operators `bodyforge.cleanup`, `report`, `in_place`, `trim`, `loop`, `mirror` to `captureforge/body/ops.py` and the matching controls and report readout to `captureforge/body/ui.py`
+- [x] T026 [P] [US2] Implement `captureforge/body/filters.py` (One Euro, 2nd-order Butterworth run forward and backward with numpy only, quaternion smoothing) so T022 passes
+- [x] T027 [P] [US2] Implement `captureforge/body/contact.py` (contact detection with thresholds and minimum duration, foot lock with a two-bone leg solve inside limits) so T023 passes
+- [x] T028 [P] [US2] Implement `captureforge/body/clipops.py` (in place, trim, loop closer, mirror on a `MotionClip`) so T024 passes
+- [x] T029 [P] [US2] Implement `captureforge/body/report.py` (metrics, `report.json`, text summary) so the T025 pure tests pass
+- [x] T030 [US2] Extend `captureforge/body/apply.py` with re-writing the action from an edited clip and the filmstrip render (a grid of evenly spaced frames to PNG) so the T025 Blender test passes
+- [x] T031 [US2] Add operators `bodyforge.cleanup`, `report`, `in_place`, `trim`, `loop`, `mirror` to `captureforge/body/ops.py` and the matching controls and report readout to `captureforge/body/ui.py`
 
 **Checkpoint**: a raw clip can be turned into a clean, loopable, reviewed clip.
 
@@ -110,13 +110,13 @@ seen failing before the implementation exists. Pure tests run with `python tests
 
 ### Tests for User Story 3 (write first, see them fail)
 
-- [ ] T032 [P] [US3] Write failing Blender tests in `tests/run_body_tests.py` for the export (preset options applied, FBX read-back matches bones, rest pose, frame range and rate, hips height track within tolerance, refusal message lists missing and extra bones, in-place clip has no horizontal drift)
+- [x] T032 [P] [US3] Write failing Blender tests in `tests/run_body_tests.py` for the export (preset options applied, FBX read-back matches bones, rest pose, frame range and rate, hips height track within tolerance, refusal message lists missing and extra bones, in-place clip has no horizontal drift)
 
 ### Implementation for User Story 3
 
-- [ ] T033 [US3] Implement `captureforge/body/export.py` (profile check, FBX preset per `contracts/unity-export-preset.md`, read-back helper used by the test) so T032 passes
-- [ ] T034 [US3] Add `bodyforge.export_unity` to `captureforge/body/ops.py` and the export path and button to `captureforge/body/ui.py`
-- [ ] T035 [US3] Document the manual Unity Humanoid import check (steps and expected result) in `specs/001-bodyforge-v1/quickstart.md` and record the maintainer's result and the character's avatar setup in the PR description
+- [x] T033 [US3] Implement `captureforge/body/export.py` (profile check, FBX preset per `contracts/unity-export-preset.md`, read-back helper used by the test) so T032 passes
+- [x] T034 [US3] Add `bodyforge.export_unity` to `captureforge/body/ops.py` and the export path and button to `captureforge/body/ui.py`
+- [x] T035 [US3] Document the manual Unity Humanoid import check (steps and expected result) in `specs/001-bodyforge-v1/quickstart.md` and record the maintainer's result and the character's avatar setup in the PR description
 
 **Checkpoint**: a cleaned clip imports in Unity as a Humanoid clip.
 
@@ -130,14 +130,14 @@ seen failing before the implementation exists. Pure tests run with `python tests
 
 ### Tests for User Story 4 (write first, see them fail)
 
-- [ ] T036 [P] [US4] Write failing tests in `tests/test_body_solve.py` for fingers (open versus fist curl, forearm twist from the palm plane, hold and relax through lost frames, hands-off leaves rest)
-- [ ] T037 [P] [US4] Write failing test in `tests/test_body_helper.py` for the optional `--hands-model` argument and the `hands_world` and `hands_vis` fields in the landmark writer
+- [x] T036 [P] [US4] Write failing tests in `tests/test_body_solve.py` for fingers (open versus fist curl, forearm twist from the palm plane, hold and relax through lost frames, hands-off leaves rest)
+- [x] T037 [P] [US4] Write failing test in `tests/test_body_helper.py` for the optional `--hands-model` argument and the `hands_world` and `hands_vis` fields in the landmark writer
 
 ### Implementation for User Story 4
 
-- [ ] T038 [US4] Add finger curl and palm-driven forearm twist to `captureforge/body/solve.py` and the finger bones to `captureforge/body/profile.py` so T036 passes
-- [ ] T039 [P] [US4] Add MediaPipe Hands to `captureforge/body/helpers/pose_to_landmarks.py` (left and right order, NaN when absent) so T037 passes
-- [ ] T040 [US4] Add the `use_hands` option to `captureforge/body/ui.py` and `captureforge/body/ops.py`, and the hand model download to `captureforge/body/helpers/setup_env.py`
+- [x] T038 [US4] Add finger curl and palm-driven forearm twist to `captureforge/body/solve.py` and the finger bones to `captureforge/body/profile.py` so T036 passes
+- [x] T039 [P] [US4] Add MediaPipe Hands to `captureforge/body/helpers/pose_to_landmarks.py` (left and right order, NaN when absent) so T037 passes
+- [x] T040 [US4] Add the `use_hands` option to `captureforge/body/ui.py` and `captureforge/body/ops.py`, and the hand model download to `captureforge/body/helpers/setup_env.py`
 
 **Checkpoint**: the frisk clip can keep its hands.
 
@@ -151,13 +151,13 @@ seen failing before the implementation exists. Pure tests run with `python tests
 
 ### Tests for User Story 5 (write first, see them fail)
 
-- [ ] T041 [P] [US5] Write failing tests for the capture check in `tests/test_body_landmarks.py` (fps under 30, body out of frame, low mean visibility, several people from `meta`)
+- [x] T041 [P] [US5] Write failing tests for the capture check in `tests/test_body_landmarks.py` (fps under 30, body out of frame, low mean visibility, several people from `meta`)
 
 ### Implementation for User Story 5
 
-- [ ] T042 [US5] Implement the capture check in `captureforge/body/landmarks.py` and show its warnings in the panel and before the solve in `captureforge/body/ops.py` so T041 passes
-- [ ] T043 [P] [US5] Write the recording guide `docs/BODYFORGE-RECORDING.md` (angle, fps, light, framing, clothing, per-clip notes for hands up, frisk, motorcycle seated with one leg visible, dance at 60 fps, known limits, responsible-use note linking POLICY.md)
-- [ ] T044 [P] [US5] Write the pt-BR translation `docs/pt-BR/BODYFORGE-RECORDING.md`
+- [x] T042 [US5] Implement the capture check in `captureforge/body/landmarks.py` and show its warnings in the panel and before the solve in `captureforge/body/ops.py` so T041 passes
+- [x] T043 [P] [US5] Write the recording guide `docs/BODYFORGE-RECORDING.md` (angle, fps, light, framing, clothing, per-clip notes for hands up, frisk, motorcycle seated with one leg visible, dance at 60 fps, known limits, responsible-use note linking POLICY.md)
+- [x] T044 [P] [US5] Write the pt-BR translation `docs/pt-BR/BODYFORGE-RECORDING.md`
 
 **Checkpoint**: a user can film the four clips and is warned about bad takes.
 
@@ -171,13 +171,13 @@ seen failing before the implementation exists. Pure tests run with `python tests
 
 ### Tests for User Story 6 (write first, see them fail)
 
-- [ ] T045 [P] [US6] Write failing tests in `tests/test_body_helper.py` (head box in the landmark writer, the face helper's `--crop` argument reads the boxes) and in `tests/run_body_tests.py` (shared timeline, skip-with-warning for a tiny face)
+- [x] T045 [P] [US6] Write failing tests in `tests/test_body_helper.py` (head box in the landmark writer, the face helper's `--crop` argument reads the boxes) and in `tests/run_body_tests.py` (shared timeline, skip-with-warning for a tiny face)
 
 ### Implementation for User Story 6
 
-- [ ] T046 [US6] Write the head box from the pose landmarks in `captureforge/body/helpers/pose_to_landmarks.py`
-- [ ] T047 [US6] Add the optional `--crop` argument to `captureforge/face/helpers/video_to_csv.py` and `captureforge/face/video.py` without changing the default FaceForge behavior (existing face tests stay green)
-- [ ] T048 [US6] Add `bodyforge.video_to_body_and_face` to `captureforge/body/ops.py` and the option to `captureforge/body/ui.py` so T045 passes
+- [x] T046 [US6] Write the head box from the pose landmarks in `captureforge/body/helpers/pose_to_landmarks.py`
+- [x] T047 [US6] Add the optional `--crop` argument to `captureforge/face/helpers/video_to_csv.py` and `captureforge/face/video.py` without changing the default FaceForge behavior (existing face tests stay green)
+- [x] T048 [US6] Add `bodyforge.video_to_body_and_face` to `captureforge/body/ops.py` and the option to `captureforge/body/ui.py` so T045 passes
 
 **Checkpoint**: body and face from one video.
 
@@ -187,13 +187,13 @@ seen failing before the implementation exists. Pure tests run with `python tests
 
 **Purpose**: docs, release and verification of the open research items.
 
-- [ ] T049 [P] Add the BodyForge section to `README.md` and `README.pt-BR.md` in the same change, flipping BodyForge from roadmap to available once released, and link POLICY.md and the recording guide
-- [ ] T050 [P] Update `captureforge/blender_manifest.toml` (tagline, permissions text for files and network, version 0.2.0 at release) and check `blender --command extension validate` on 4.4 and 5.2
-- [ ] T051 Verify the MediaPipe pose and hand model licenses on their model cards and record the license, URL and sha256 in `docs/` (research open item 1); the model URLs in `setup_env.py` use those hashes
-- [ ] T052 Measure the 10 s clip from video to animated rig on the reference RTX 3050 laptop and record the time in `specs/001-bodyforge-v1/quickstart.md` (SC-006, research open item 2)
-- [ ] T053 Run the four client clips through the pipeline, record per-clip results and limits in the PR description (SC-003), and confirm in Unity that the clips play on the game's avatar
-- [ ] T054 Run the private-data grep (local paths, personal names, e-mails, private project names) over the whole diff and fix any hit (Constitution VI, SC-008)
-- [ ] T055 Run `quickstart.md` end to end on a clean Blender 5.2 profile and fix any step that fails
+- [x] T049 [P] Add the BodyForge section to `README.md` and `README.pt-BR.md` in the same change, flipping BodyForge from roadmap to available once released, and link POLICY.md and the recording guide
+- [x] T050 [P] Update `captureforge/blender_manifest.toml` (tagline, permissions text for files and network, version 0.2.0 at release) and check `blender --command extension validate` on 4.4 and 5.2
+- [ ] T051 (partly done: URLs, sizes and sha256 are recorded in `docs/BODYFORGE-MODELS.md`; the weight-file license wording on the model-card PDFs still has to be read by the maintainer) Verify the MediaPipe pose and hand model licenses on their model cards and record the license, URL and sha256 in `docs/` (research open item 1); the model URLs in `setup_env.py` use those hashes
+- [x] T052 Measure the 10 s clip from video to animated rig on the reference RTX 3050 laptop and record the time in `specs/001-bodyforge-v1/quickstart.md` (SC-006, research open item 2)
+- [ ] T053 (needs the maintainer's real footage) Run the four client clips through the pipeline, record per-clip results and limits in the PR description (SC-003), and confirm in Unity that the clips play on the game's avatar
+- [x] T054 Run the private-data grep (local paths, personal names, e-mails, private project names) over the whole diff and fix any hit (Constitution VI, SC-008)
+- [x] T055 Run `quickstart.md` end to end on a clean Blender 5.2 profile and fix any step that fails
 
 ---
 

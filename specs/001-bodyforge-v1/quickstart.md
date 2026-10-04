@@ -9,6 +9,7 @@ How to prove the feature works end to end. Contracts: [landmarks-file](contracts
 ```sh
 # pure tests (needs only numpy)
 python tests/test_body_landmarks.py
+python tests/test_body_quat.py
 python tests/test_body_solve.py
 python tests/test_body_cleanup.py
 python tests/test_body_helper.py
@@ -27,6 +28,11 @@ the same commands on both Blender lines.
 3. When it finishes, the Python and model paths are filled in. Press **Check helper**; expected: "helper ready".
 
 If something fails, the panel shows the manual steps (the same `SETUP_LINES` pattern as FaceForge).
+
+*Verified 2026-10-03 on Blender 5.2.1 with a clean factory profile:* `setup_env.py --yes --hands` created a new venv, installed
+`mediapipe` and `opencv-python`, downloaded the three models and passed their checksums; **Check helper** answered
+"helper ready"; the full BodyForge Blender suite, including the real MediaPipe test on the synthetic mannequin video,
+passed with that venv.
 
 ## 3. Hands-up clip (the easy one, user story 1)
 
