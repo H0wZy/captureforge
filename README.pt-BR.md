@@ -194,7 +194,8 @@ Os passos puros (leitor de pontos, solver, filtros, trava de pés, relatório) s
 explícitos, então scripts e agentes chamam sem o Blender. Limites: uma pessoa, uma câmera fixa, quase tudo no lugar;
 profundidade é o ponto fraco de uma câmera só; a trava de pés é uma heurística que precisa ficar desligada em pulos e
 poses sentadas; dedos são só curvatura e giro. Licenças e checksums dos modelos estão em
-[`docs/BODYFORGE-MODELS.md`](docs/BODYFORGE-MODELS.md). Não filme nem anime uma pessoa real sem o consentimento dela
+[`docs/BODYFORGE-MODELS.md`](docs/BODYFORGE-MODELS.md). Os modelos MediaPipe são Apache-2.0, só são baixados depois da sua
+confirmação e nunca vão empacotados no CaptureForge; o resultado (pontos, animação em shape keys e ossos) é seu. Não filme nem anime uma pessoa real sem o consentimento dela
 ([POLICY.md](POLICY.md)).
 
 ## Headless, linha de comando e agentes de IA

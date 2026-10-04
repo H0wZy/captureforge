@@ -189,7 +189,7 @@ seen failing before the implementation exists. Pure tests run with `python tests
 
 - [x] T049 [P] Add the BodyForge section to `README.md` and `README.pt-BR.md` in the same change, flipping BodyForge from roadmap to available once released, and link POLICY.md and the recording guide
 - [x] T050 [P] Update `captureforge/blender_manifest.toml` (tagline, permissions text for files and network, version 0.2.0 at release) and check `blender --command extension validate` on 4.4 and 5.2
-- [ ] T051 (partly done: URLs, sizes and sha256 are recorded in `docs/BODYFORGE-MODELS.md`; the weight-file license wording on the model-card PDFs still has to be read by the maintainer) Verify the MediaPipe pose and hand model licenses on their model cards and record the license, URL and sha256 in `docs/` (research open item 1); the model URLs in `setup_env.py` use those hashes
+- [x] T051 Verify the MediaPipe pose and hand model licenses on their model cards and record the license, URL and sha256 in `docs/` (research open item 1); the model URLs in `setup_env.py` use those hashes. Done 2026-10-04: all weights are Apache-2.0, see `docs/pt-BR/BODYFORGE-T051-LICENCA.md`.
 - [x] T052 Measure the 10 s clip from video to animated rig on the reference RTX 3050 laptop and record the time in `specs/001-bodyforge-v1/quickstart.md` (SC-006, research open item 2)
 - [ ] T053 (needs the maintainer's real footage) Run the four client clips through the pipeline, record per-clip results and limits in the PR description (SC-003), and confirm in Unity that the clips play on the game's avatar
 - [x] T054 Run the private-data grep (local paths, personal names, e-mails, private project names) over the whole diff and fix any hit (Constitution VI, SC-008)

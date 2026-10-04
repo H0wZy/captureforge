@@ -185,7 +185,8 @@ The pure steps (landmark reader, solver, filters, foot lock, report) are plain n
 data, so scripts and agents can call them without Blender. Limits: one person, one fixed camera, mostly in place;
 depth is the weak axis of single-camera tracking; the foot lock is a heuristic that needs to be off for jumps and
 seated poses; fingers are curl and twist only. Model licenses and checksums are in
-[`docs/BODYFORGE-MODELS.md`](docs/BODYFORGE-MODELS.md). Do not film or animate a real person without their consent
+[`docs/BODYFORGE-MODELS.md`](docs/BODYFORGE-MODELS.md). The MediaPipe models are Apache-2.0, are downloaded only
+after you confirm and are never bundled with CaptureForge; the output (landmarks, shape-key and bone animation) is yours. Do not film or animate a real person without their consent
 ([POLICY.md](POLICY.md)).
 
 ## Headless, command line and AI agents
