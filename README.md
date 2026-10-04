@@ -8,11 +8,11 @@ one sidebar tab (`CaptureForge`):
 | Module | What it does | Status |
 |---|---|---|
 | **FaceForge** | Turns a posed facial rig into **ARKit 52 shape keys** (or your own list) and drives them from a video or a webcam, no iPhone needed. | available |
-| **BodyForge** | Markerless body mocap from 1 to 3 phone videos. | roadmap |
+| **BodyForge** | Markerless **body mocap from one phone video**: clean-up, foot lock, report, and a Unity Humanoid FBX export. | available (0.2) |
 | **ScanForge** | Face and body scan from a 360-degree video. | roadmap |
 
 License: GPL-3.0-or-later. Blender 4.4 LTS or newer (developed on 5.2). Pure Python, no extra packages inside
-Blender. Everything below is FaceForge, the module that exists today.
+Blender. The FaceForge sections come first; [BodyForge](#bodyforge-body-mocap-from-one-phone-video) has its own section.
 
 ## Why this exists
 
@@ -157,6 +157,37 @@ shapes. Invalid datagrams are ignored; with `noface` the last pose is held. Run 
 You can also run the helper script yourself:
 `python captureforge/face/helpers/video_to_csv.py video.mp4 -o out.csv --model face_landmarker.task`.
 
+## BodyForge: body mocap from one phone video
+
+BodyForge turns one ordinary phone video (any Android phone or webcam, no iPhone, depth sensor or LiDAR) into an
+animation on a **Mixamo/Unity Humanoid** armature, cleans it up and exports an FBX that Unity reads as a Humanoid
+clip. It adds a `BodyForge` panel in the same `CaptureForge` tab.
+
+1. **Helper (one time).** Preferences > Add-ons > CaptureForge > **Install helper**. It shows what it will do (a
+   Python environment with `mediapipe` and `opencv-python`, and the MediaPipe pose model, about 31 MB, Apache-2.0,
+   from Google's storage) and asks before it downloads anything. The same environment serves FaceForge. Without the
+   helper the add-on keeps working and shows setup steps.
+2. **Rig.** Pick your Mixamo-style armature (names with or without `mixamorig:`), or **Create reference armature**.
+3. **Film.** Follow the [recording guide](docs/BODYFORGE-RECORDING.md) (fixed phone, 30 fps or more, head to feet in
+   view, 1.5 to 2 s standing still at the start). BodyForge warns about low frame rate, a body out of the picture, low
+   confidence and several people.
+4. **Video to body.** Esc cancels while it tracks. **Hands and fingers** (needs the hand model) adds finger curl and a
+   palm-driven forearm twist; **Video to body and face** also keys the face of the same video with FaceForge.
+5. **Clean up.** Zero-phase smoothing (or a causal preview filter), foot-contact detection and **foot lock**, then
+   **In place**, **Trim**, **Close loop**, **Mirror**. Everything restarts from the raw clip kept on the action.
+6. **Report.** Foot skate (cm/s), bone length drift, joint-limit violations, jitter and weak frame ranges, as text,
+   `report.json` and a `filmstrip.png` for review, written next to the video.
+7. **Export for Unity.** An FBX with the documented preset (T-pose rest, no leaf bones, Y up, baked, deform bones only);
+   it refuses, listing the missing or extra bones, when the armature does not match. In Unity: Animation Type
+   Humanoid, Avatar = the character's avatar.
+
+The pure steps (landmark reader, solver, filters, foot lock, report) are plain numpy functions that take explicit
+data, so scripts and agents can call them without Blender. Limits: one person, one fixed camera, mostly in place;
+depth is the weak axis of single-camera tracking; the foot lock is a heuristic that needs to be off for jumps and
+seated poses; fingers are curl and twist only. Model licenses and checksums are in
+[`docs/BODYFORGE-MODELS.md`](docs/BODYFORGE-MODELS.md). Do not film or animate a real person without their consent
+([POLICY.md](POLICY.md)).
+
 ## Headless, command line and AI agents
 
 The core modules (`bake`, `markers`, `split`, `mocap`, `sheet`, `video`, `quality`, `autofit`, `live`) take explicit objects and do not depend on the UI context, so they run in background Blender:
@@ -191,7 +222,13 @@ Headless, one Blender process:
 timeout 300 "C:/Program Files/Blender Foundation/Blender 5.2/blender.exe" --background --factory-startup --python tests/run_tests.py
 python tests/test_video_to_csv.py
 python tests/test_webcam_stream.py
+# BodyForge: pure numpy tests, then the Blender side
+for t in landmarks quat solve helper cleanup; do python tests/test_body_$t.py; done
+timeout 600 "C:/Program Files/Blender Foundation/Blender 5.2/blender.exe" --background --factory-startup --python tests/run_body_tests.py
 ```
+
+BodyForge's real-MediaPipe test renders a synthetic mannequin video and runs it end to end; it is skipped unless
+`BODYFORGE_PYTHON` (the helper venv's python) and `BODYFORGE_POSE_MODEL` (a pose `.task` file) are set.
 
 The first builds a procedural head (sphere, armature, eyes, teeth) and prints `FaceForge tests: N passed,
 M failed`, exiting non-zero on failure. GitHub Actions runs the same on every push. Set `FACEFORGE_PYTHON` (a python with mediapipe and opencv) and
@@ -227,10 +264,9 @@ v1.1 ideas:
 
 ### The Forge family
 
-Two future sister modules of CaptureForge, in the same spirit (free, Blender, AI-friendly):
+Sister modules of CaptureForge, in the same spirit (free, Blender, AI-friendly):
 
-- **BodyForge**: markerless body mocap from 1 to 3 phone videos (MediaPipe Pose, multi-camera
-  triangulation, foot lock, retarget to a humanoid).
+- **BodyForge** (available, see above). Next ideas: more estimators (RTMW), other rigs and retargeting, 1 to 3 cameras.
 - **ScanForge**: face and body scan from a 360-degree video (sharp-frame pick, COLMAP or Meshroom as external
   tools, wrap onto a clean animatable topology, then FaceForge).
 

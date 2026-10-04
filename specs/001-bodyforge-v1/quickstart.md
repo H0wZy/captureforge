@@ -71,4 +71,9 @@ the PR description.
 ## 7. Performance and privacy checks
 
 - Time the 10 s clip from video to animated rig on the reference laptop; expected under 3 minutes (SC-006).
+  **Measured (2026-10-03, Windows 11, an RTX 3050 with 8 GB; MediaPipe ran on the CPU, the GPU was not used):** a 9 s
+  synthetic mannequin video, 270 frames, 540x960, heavy pose model, Blender 5.2.1: **Video to body 19.1 s** (tracking,
+  solve, and keys on the rig), Clean up 0.9 s, Report 0.1 s, Export for Unity 0.4 s, 20.5 s in all, about nine times
+  under the 3-minute target. Real 1080p phone footage adds decode time; the pose model input is 256x256 either way, so
+  the tracking cost is about the same. No GPU memory is needed.
 - Before every push, grep the diff for absolute local paths, personal names, e-mails and private project names (Constitution VI); expected: no hits.

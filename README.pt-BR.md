@@ -8,11 +8,12 @@ módulos que compartilham uma aba na barra lateral (`CaptureForge`):
 | Módulo | O que faz | Situação |
 |---|---|---|
 | **FaceForge** | Transforma um rig facial posado em **shape keys ARKit 52** (ou sua lista) e aciona essas keys a partir de um vídeo ou webcam, sem iPhone. | disponível |
-| **BodyForge** | Mocap corporal sem marcadores a partir de 1 a 3 vídeos de celular. | roadmap |
+| **BodyForge** | **Mocap corporal sem marcadores a partir de um vídeo de celular**: limpeza, trava de pés, relatório e exportação de FBX Humanoid para o Unity. | disponível (0.2) |
 | **ScanForge** | Scan de rosto e corpo a partir de um vídeo 360 graus. | roadmap |
 
 Licença: GPL-3.0-or-later. Blender 4.4 LTS ou mais novo (desenvolvido no 5.2). Python puro, sem pacotes
-extras dentro do Blender. Tudo abaixo é o FaceForge, o módulo que existe hoje.
+extras dentro do Blender. As seções do FaceForge vêm primeiro; o
+[BodyForge](#bodyforge-mocap-corporal-a-partir-de-um-vídeo-de-celular) tem a sua própria seção.
 
 ## Por que isso existe
 
@@ -164,6 +165,38 @@ algumas shapes. Datagramas inválidos são ignorados; com `noface` a última pos
 Também dá para rodar o script auxiliar na mão:
 `python captureforge/face/helpers/video_to_csv.py video.mp4 -o out.csv --model face_landmarker.task`.
 
+## BodyForge: mocap corporal a partir de um vídeo de celular
+
+O BodyForge transforma um vídeo comum de celular (qualquer Android ou webcam, sem iPhone, sensor de profundidade ou
+LiDAR) numa animação em um armature **Humanoid Mixamo/Unity**, limpa o resultado e exporta um FBX que o Unity lê como
+clipe Humanoid. Ele adiciona um painel `BodyForge` na mesma aba `CaptureForge`.
+
+1. **Helper (uma vez).** Preferências > Add-ons > CaptureForge > **Install helper**. Ele mostra o que vai fazer (um
+   ambiente Python com `mediapipe` e `opencv-python`, e o modelo de pose do MediaPipe, uns 31 MB, Apache-2.0, do
+   armazenamento do Google) e pergunta antes de baixar qualquer coisa. O mesmo ambiente serve ao FaceForge. Sem o helper
+   o add-on continua funcionando e mostra os passos de instalação.
+2. **Rig.** Escolha seu armature estilo Mixamo (nomes com ou sem `mixamorig:`), ou **Create reference armature**.
+3. **Filme.** Siga o [guia de gravação](docs/pt-BR/BODYFORGE-RECORDING.md) (celular fixo, 30 fps ou mais, da cabeça aos
+   pés no quadro, 1,5 a 2 s parado no começo). O BodyForge avisa de taxa de quadros baixa, corpo fora do quadro, pouca
+   confiança e várias pessoas.
+4. **Video to body.** Esc cancela durante o rastreio. **Hands and fingers** (precisa do modelo de mãos) adiciona a curva
+   dos dedos e o giro do antebraço guiado pela palma; **Video to body and face** também anima o rosto do mesmo vídeo com
+   o FaceForge.
+5. **Clean up.** Suavização de fase zero (ou um filtro causal de prévia), detecção de contato e **trava de pés**, depois
+   **In place**, **Trim**, **Close loop**, **Mirror**. Tudo recomeça do clipe bruto guardado na action.
+6. **Report.** Deslize do pé (cm/s), deriva do comprimento dos ossos, violações de limite das juntas, tremor e trechos
+   fracos, em texto, `report.json` e um `filmstrip.png` para revisão, gravados ao lado do vídeo.
+7. **Export for Unity.** Um FBX com o preset documentado (repouso em T-pose, sem leaf bones, Y para cima, baked, só ossos
+   de deformação); ele recusa, listando os ossos que faltam ou sobram, quando o armature não bate. No Unity: Animation
+   Type Humanoid, Avatar = o avatar do personagem.
+
+Os passos puros (leitor de pontos, solver, filtros, trava de pés, relatório) são funções numpy que recebem dados
+explícitos, então scripts e agentes chamam sem o Blender. Limites: uma pessoa, uma câmera fixa, quase tudo no lugar;
+profundidade é o ponto fraco de uma câmera só; a trava de pés é uma heurística que precisa ficar desligada em pulos e
+poses sentadas; dedos são só curvatura e giro. Licenças e checksums dos modelos estão em
+[`docs/BODYFORGE-MODELS.md`](docs/BODYFORGE-MODELS.md). Não filme nem anime uma pessoa real sem o consentimento dela
+([POLICY.md](POLICY.md)).
+
 ## Headless, linha de comando e agentes de IA
 
 Os módulos de núcleo (`bake`, `markers`, `split`, `mocap`, `sheet`, `video`, `quality`, `autofit`, `live`)
@@ -199,7 +232,14 @@ Headless, um processo do Blender:
 timeout 300 "C:/Program Files/Blender Foundation/Blender 5.2/blender.exe" --background --factory-startup --python tests/run_tests.py
 python tests/test_video_to_csv.py
 python tests/test_webcam_stream.py
+# BodyForge: testes numpy puros, depois o lado Blender
+for t in landmarks quat solve helper cleanup; do python tests/test_body_$t.py; done
+timeout 600 "C:/Program Files/Blender Foundation/Blender 5.2/blender.exe" --background --factory-startup --python tests/run_body_tests.py
 ```
+
+O teste com MediaPipe de verdade do BodyForge renderiza um vídeo sintético de manequim e roda tudo de ponta a ponta;
+ele é pulado a menos que `BODYFORGE_PYTHON` (o python do venv do helper) e `BODYFORGE_POSE_MODEL` (um arquivo `.task` de
+pose) estejam definidos.
 
 O primeiro monta uma cabeça procedural (esfera, armature, olhos, dentes) e imprime
 `FaceForge tests: N passed, M failed`, saindo com código diferente de 0 em falha. O GitHub Actions roda o
@@ -237,10 +277,9 @@ Ideias da v1.1:
 
 ### A família Forge
 
-Dois módulos irmãos futuros do CaptureForge, no mesmo espírito (gratuitos, Blender, amigáveis a IA):
+Módulos irmãos do CaptureForge, no mesmo espírito (gratuitos, Blender, amigáveis a IA):
 
-- **BodyForge**: mocap corporal sem marcadores a partir de 1 a 3 vídeos de celular (MediaPipe Pose,
-  triangulação de várias câmeras, trava de pés, retarget para um humanoide).
+- **BodyForge** (disponível, veja acima). Próximas ideias: mais estimadores (RTMW), outros rigs e retarget, 1 a 3 câmeras.
 - **ScanForge**: scan de rosto e corpo a partir de um vídeo 360 graus (escolha de quadros nítidos, COLMAP ou
   Meshroom como ferramentas externas, wrap numa topologia limpa e animável, depois FaceForge).
 
