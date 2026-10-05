@@ -6,8 +6,8 @@ they did and what they measured.
 
 ## Verdict
 
-**No-go on the synthetic proxy. Implementation (T002 to T016) is on hold.** The real-clip check of SC-004 is still
-open; it needs the maintainer's footage (see "What would change the verdict").
+**No-go, on the synthetic proxy and on real footage. Implementation (T002 to T016) is on hold.** The real-clip check
+(below, "Real footage") confirms the proxy: the fitted weights are worse than MediaPipe's own scores.
 
 The fit lowers the landmark residual by 20 to 50 % in every configuration, so the first half of SC-004 passes. But
 the fitted weights are further from the true weights than the generic MediaPipe scores in every configuration, so the
@@ -113,3 +113,39 @@ Two cheaper directions that keep the generic scores as the source of truth, reco
 - MediaPipe's generic scores on stylized renders show the cross-talk the spec describes: a smile on the procedural
   head reads mostly as `mouthDimpleRight` 0.89 and `mouthDimpleLeft` 0.66, a pucker also raises `mouthDimpleRight`
   0.73, and a neutral face reads `eyeLookDown` 0.6 on both eyes.
+
+## Real footage (2026-10-05)
+
+Two phone clips of a consenting adult (the maintainer), unscripted: 153 s of mixed expressions (854 x 480, 30 fps,
+4590 of 4591 frames tracked) and 21 s of blinking (1920 x 1080, 60 fps, all 1273 frames tracked, 24 blinks). The clips
+and their landmark files were processed in a temporary environment and deleted; nothing of them is in the repository.
+Same three test characters and solver as above; the neutral face is a calm stretch at the start of each clip.
+
+Because the performance was not scripted, 17 windows were labelled by looking at the frames (2 neutral, 3 smile,
+3 jaw open, 2 pucker, 2 wink, 2 frown, 1 brows up, 2 sneer). Metric (not circular): in each expression window, is
+one of the expected keys the strongest weight ("hit"), what share of the total weight it takes, and how much weight
+the neutral windows carry.
+
+| Weights | Hits (of 15) | Expected key share | Neutral weight sum |
+|---|---|---|---|
+| Generic MediaPipe scores | 7 | 0.21 to 0.22 | 0.34 to 0.35 |
+| Fitted, spec defaults (l1 0.02, l2 0.1, gain 1) | 2 to 4 | 0.08 to 0.09 | 1.9 to 2.8 |
+| Fitted, best of a sweep (gain 0.05 to 0.5, l2 0.1 to 10, all 468 or contour points, depth 0 or 0.5) | 5 to 8 (`same`), 1 (`cartoon`), 5 (`narrow`) | at most 0.17 | at least 0.6 at a matching hit count |
+
+The residual still dropped 18 to 24 % (circular, as before).
+
+Blinking clip, mean at the 24 blink peaks: generic `eyeBlink` 0.61 with 0.30 leaking into `eyeSquint`, `browDown` and
+`cheekSquint`; fitted `eyeBlink` 0.07 to 0.40 with 0.40 to 1.00 leaking, and open-eye frames carry 0.24 to 1.65 of
+weight instead of 0.16.
+
+Two reasons show in the data:
+
+- **Scale.** A real face moves its landmarks about ten times more (RMS 0.033 eye distances) than the test heads' keys
+  move theirs (median 0.003). With absolute matching most weights saturate at 1. `Expression gain` fixes the scale but
+  not the next point.
+- **The tracked motion does not separate the keys.** With the scale fixed, the fit still spreads a smile or a blink over
+  squint, sneer and shrug keys, which move nearby points the same way. MediaPipe's blendshape head was trained to make
+  that separation and does it better than a geometric fit on its own landmarks.
+
+A blind side-by-side (generic and fitted in random order, 9 moments, character `same`, gain 0.3, l2 1.0) was handed
+to the maintainer; the result is recorded here when it comes back.

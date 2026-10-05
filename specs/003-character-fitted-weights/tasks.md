@@ -11,8 +11,9 @@
 - [x] T001 Spike (throwaway script, not committed, real clip not committed): with the helper venv, dump landmarks of a real clip, build the basis for two or three stylized heads of different styles, solve, and write down the landmark residual of generic versus fitted weights and a side-by-side look at the keyed result. Go/no-go for SC-004; tune the starting `l1`, `l2` and the alignment subset indices here. Record the numbers in `specs/003-character-fitted-weights/research.md`.
   **Result (2026-10-05): no-go on the synthetic proxy** (no real footage in the measuring environment). The residual
   dropped 20 to 50 % (circular: the solver minimizes it), but the fitted weights were further from the truth than the
-  generic scores on all three characters (weight RMS 0.12 to 0.29 against 0.12 to 0.13). Everything below is on hold;
-  the real-clip review and a non-circular replacement for SC-004 are described in `research.md`.
+  generic scores on all three characters (weight RMS 0.12 to 0.29 against 0.12 to 0.13). Everything below is on hold.
+  Real footage (same day): also no-go, generic wins 7 of 15 labelled windows against at most 2 to 8 for the fit, and
+  blinks get weaker with more leakage; numbers in `research.md`.
 
 ## On hold after T001 (do not start without a new go decision)
 
