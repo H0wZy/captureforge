@@ -23,8 +23,8 @@
 
 - [x] T008 [P] Tests `tests/test_capture_protocol.py`: encode and decode round trip, partial reads byte by byte, oversized header or payload rejected, unknown type ignored, wrong token refused, interface version mismatch reported
 - [x] T009 Implement `captureforge/face/capture/protocol.py`
-- [ ] T010 [P] Tests `tests/test_capture_helper.py`: with the fake camera (`--source file` or synthetic frames) the helper connects, says hello, streams states and frames, exits on stdin end of file within 2 s, on `stop`, and on a fatal error after an `error` message; `--list-cameras` prints valid JSON; `--self-test` passes with a stub tracker
-- [ ] T011 Implement `captureforge/face/helpers/capture_helper.py` (camera loop with downsizing, calibration like `Stream`, preview frames capped at 15 Hz, stdin watchdog, camera listing with the optional `cv2-enumerate-cameras`, error codes)
+- [x] T010 [P] Tests `tests/test_capture_helper.py`: with the fake camera (`--source file` or synthetic frames) the helper connects, says hello, streams states and frames, exits on stdin end of file within 2 s, on `stop`, and on a fatal error after an `error` message; `--list-cameras` prints valid JSON; `--self-test` passes with a stub tracker
+- [x] T011 Implement `captureforge/face/helpers/capture_helper.py` (camera loop with downsizing, calibration like `Stream`, preview frames capped at 15 Hz, stdin watchdog, camera listing with the optional `cv2-enumerate-cameras`, error codes). Verified 2026-10-05 with the real tracker on a 22 s video played as a camera (Linux x86-64, CPU): 659 of 659 frames, capture to receipt p50 37 ms, p95 40 ms. Open: the camera-open error heuristics (`camera_busy` versus `permission_denied` per OS) need the real-hardware checks of T002 and T028
 - [x] T012 [P] Tests `tests/test_capture_errors.py`: every code of FR-012 has a message and a fix per OS; helper exit and socket errors map to codes
 - [x] T013 Implement `captureforge/face/capture/errors.py`
 
