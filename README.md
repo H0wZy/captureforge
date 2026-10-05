@@ -249,6 +249,8 @@ Headless, one Blender process:
 timeout 300 "C:/Program Files/Blender Foundation/Blender 5.2/blender.exe" --background --factory-startup --python tests/run_tests.py
 python tests/test_video_to_csv.py
 python tests/test_webcam_stream.py
+# Live capture (spec 004): protocol, errors, installer, post-processing, tracker contract; the helper test needs numpy
+for t in post contract protocol errors setup helper; do python tests/test_capture_$t.py; done
 # BodyForge: pure numpy tests, then the Blender side
 for t in landmarks quat solve helper cleanup; do python tests/test_body_$t.py; done
 timeout 600 "C:/Program Files/Blender Foundation/Blender 5.2/blender.exe" --background --factory-startup --python tests/run_body_tests.py
@@ -288,6 +290,10 @@ v1.1 ideas:
 - Pose from a reference image: solve the rig so MediaPipe sees the same expression as a photo or an AI image.
 - Automatic wrinkle and tension maps per shape.
 - Expression transfer between characters.
+- Live capture panel inside Blender (spec 004): camera list, preview, record and bake onto the character. Done so
+  far: the capture helper with its local protocol, the tracker contract (`docs/TRACKER-CONTRACT.md`), the helper
+  installer (Blender's own Python, pinned packages, offline afterwards) and the face model in the release zip. Next:
+  the Blender session, the preview overlay and the panel.
 - Weights fitted to the character's own shape keys (spec 003): on hold. A measurement showed that fitting the
   tracked landmarks makes the weights worse than MediaPipe's own scores on stylized test heads, because the
   landmarks between the visible features do not follow the skin closely enough. Details:

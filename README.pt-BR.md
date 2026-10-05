@@ -260,6 +260,8 @@ Headless, um processo do Blender:
 timeout 300 "C:/Program Files/Blender Foundation/Blender 5.2/blender.exe" --background --factory-startup --python tests/run_tests.py
 python tests/test_video_to_csv.py
 python tests/test_webcam_stream.py
+# Captura ao vivo (spec 004): protocolo, erros, instalador, pós-processamento, contrato do tracker; o teste do helper precisa de numpy
+for t in post contract protocol errors setup helper; do python tests/test_capture_$t.py; done
 # BodyForge: testes numpy puros, depois o lado Blender
 for t in landmarks quat solve helper cleanup; do python tests/test_body_$t.py; done
 timeout 600 "C:/Program Files/Blender Foundation/Blender 5.2/blender.exe" --background --factory-startup --python tests/run_body_tests.py
@@ -302,6 +304,11 @@ Ideias da v1.1:
   foto ou de uma imagem de IA.
 - Mapas automáticos de rugas e tensão por shape.
 - Transferência de expressões entre personagens.
+- Painel de captura ao vivo dentro do Blender (spec 004): lista de câmeras, preview, gravar e bake no personagem.
+  Pronto até agora: o helper de captura com o protocolo local, o contrato do tracker (`docs/TRACKER-CONTRACT.md`,
+  resumo em `docs/pt-BR/CONTRATO-DO-TRACKER.md`), o instalador do helper (o Python do próprio Blender, pacotes com
+  versão fixa, offline depois) e o modelo de rosto no zip da release. Próximo: a sessão no Blender, o preview e o
+  painel.
 - Pesos ajustados às shape keys do próprio personagem (spec 003): em espera. Uma medição mostrou que ajustar os
   landmarks rastreados deixa os pesos piores que os scores do próprio MediaPipe em cabeças estilizadas de teste,
   porque os landmarks entre as feições visíveis não acompanham a pele com fidelidade suficiente. Detalhes:
