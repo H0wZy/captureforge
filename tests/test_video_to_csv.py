@@ -51,6 +51,19 @@ def test_smooth():
     assert s[0][0] <= s[1][0] <= s[2][0] <= s[3][0] <= 1.0
 
 
+def faceforge_mocap():
+    """FaceForge's mocap module with bpy stubbed (its CSV readers need numpy only); None without numpy."""
+    try:
+        import numpy  # noqa: F401
+    except ImportError:
+        return None
+    sys.modules.setdefault("bpy", types.ModuleType("bpy"))
+    pkg = types.ModuleType("ffpkg")
+    pkg.__path__ = [str(FF)]
+    sys.modules["ffpkg"] = pkg
+    return importlib.import_module("ffpkg.mocap")
+
+
 def test_csv_roundtrip():
     names = v.ARKIT_52[:4]
     times = [0.0, 0.0334, 0.0667]
@@ -58,16 +71,10 @@ def test_csv_roundtrip():
     with tempfile.TemporaryDirectory() as d:
         p = Path(d) / "out.csv"
         v.write_csv(p, names, times, rows)
-        try:
-            import numpy  # noqa: F401
-        except ImportError:
+        mocap = faceforge_mocap()
+        if mocap is None:
             print("  (numpy missing: skipping FaceForge reader round-trip)")
             return
-        sys.modules.setdefault("bpy", types.ModuleType("bpy"))
-        pkg = types.ModuleType("ffpkg")
-        pkg.__path__ = [str(FF)]
-        sys.modules["ffpkg"] = pkg
-        mocap = importlib.import_module("ffpkg.mocap")
         got_names, got_times, got_rows = mocap.read_csv(p)
     assert got_names == names, got_names
     assert all(close(a, b, 1e-5) for a, b in zip(got_times, times))
@@ -177,6 +184,27 @@ def test_csv_head_columns_and_old_format():
         head = new.read_text().splitlines()[0].split(",")
         assert head == ["time"] + names + ["headRotX", "headRotY", "headRotZ", "headPosX", "headPosY", "headPosZ"], head
         assert new.read_text().splitlines()[2].split(",")[-6:] == ["0.01000", "0.02000", "0.03000", "1.50000", "-2.00000", "0.50000"]
+
+
+def test_head_columns_roundtrip():
+    mocap = faceforge_mocap()
+    if mocap is None:
+        print("  (numpy missing: skipping FaceForge reader round-trip)")
+        return
+    names, times, rows = v.ARKIT_52[:2], [0.0, 0.1, 0.2], [[0.1, 0.2], [0.3, 0.4], [0.5, 0.6]]
+    rot, pos = [[0.0, 0.1, -0.1], [0.01, 0.02, 0.03], [0.5, 0.0, 0.0]], [[0, 0, 0], [1.5, -2.0, 0.5], [0, 0, 0]]
+    with tempfile.TemporaryDirectory() as d:
+        p, old = Path(d) / "new.csv", Path(d) / "old.csv"
+        v.write_csv(p, names, times, rows, rot, pos)
+        v.write_csv(old, names, times, rows)
+        got_names, got_times, got_rows = mocap.read_csv(p)
+        assert got_names == names and got_rows.shape == (3, 2), "head columns must not become shapes"
+        t, r, q = mocap.read_head_pose(p)
+        assert all(close(a, b, 1e-5) for x, y in zip(r.tolist(), rot) for a, b in zip(x, y))
+        assert all(close(a, b, 1e-5) for x, y in zip(q.tolist(), pos) for a, b in zip(x, y))
+        assert all(close(a, b, 1e-5) for a, b in zip(t, times))
+        assert mocap.read_head_pose(old) is None
+        assert mocap.read_csv(old)[0] == names
 
 
 def test_names_match_faceforge():

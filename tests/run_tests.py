@@ -13,7 +13,7 @@ import traceback
 import bmesh
 import bpy
 import numpy as np
-from mathutils import Vector
+from mathutils import Matrix, Vector
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))  # repo root, so "import captureforge" finds the package
@@ -1024,6 +1024,231 @@ def test_20_live_real_helper():
     finally:
         sess.stop()
     bpy.data.objects.remove(t)
+
+
+# ---------------------------------------------------------------- head pose
+
+HEAD_CSV = (
+    "time,jawOpen,headRotX,headRotY,headRotZ,headPosX,headPosY,headPosZ\n"
+    "0.0,0.0,0,0,0,0,0,0\n"
+    "0.1,0.5,0.0,0.5235988,0.0,2.0,0.0,-1.0\n"  # 30 degrees of yaw, 2 cm to the left, 1 cm back
+    "0.2,1.0,0.0,0.0,0.0,0.0,0.0,0.0\n"
+)
+
+
+def write_tmp(name, text):
+    path = os.path.join(tempfile.gettempdir(), name)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(text)
+    return path
+
+
+def head_rig(mode="QUATERNION", roll=0.0, parent=True, connect=True):
+    """Armature with Neck and Head bones pointing up (Head rolled by `roll` radians), facing -Y like Blender's front view."""
+    scene = S["scene"]
+    arm = bpy.data.objects.new("HeadRig", bpy.data.armatures.new("HeadRig"))
+    scene.collection.objects.link(arm)
+    bpy.context.view_layer.objects.active = arm
+    bpy.ops.object.mode_set(mode="EDIT")
+    neck = arm.data.edit_bones.new("Neck")
+    neck.head, neck.tail = (0, 0, 1.0), (0, 0, 1.2)
+    head = arm.data.edit_bones.new("Head")
+    head.head, head.tail = (0, 0, 1.2), (0, 0, 1.6)
+    head.roll = roll
+    if parent:
+        head.parent, head.use_connect = neck, connect
+    bpy.ops.object.mode_set(mode="OBJECT")
+    for pb in arm.pose.bones:
+        pb.rotation_mode = mode
+    return arm
+
+
+def rotation_at(arm, bone, frame):
+    """The rotation of a pose bone relative to its rest orientation, in armature space (a 3x3 Matrix)."""
+    S["scene"].frame_set(frame)
+    ev = arm.evaluated_get(bpy.context.evaluated_depsgraph_get())
+    rest = arm.data.bones[bone].matrix_local.to_3x3()
+    return ev.pose.bones[bone].matrix.to_3x3() @ rest.inverted()
+
+
+def deg(a, b):
+    return math.degrees(a.angle(b))
+
+
+def test_21_head_pose_columns():
+    names, times, rows = mocap.read_csv(write_tmp("ff_head.csv", HEAD_CSV), 60)
+    assert names == ["jawOpen"] and rows.shape == (3, 1), (names, rows.shape)  # head columns are not shapes
+    times, rot, pos = mocap.read_head_pose(write_tmp("ff_head.csv", HEAD_CSV))
+    assert len(times) == 3 and rot.shape == (3, 3) and pos.shape == (3, 3)
+    assert abs(rot[1, 1] - 0.5235988) < 1e-9 and abs(pos[1, 0] - 2.0) < 1e-9 and abs(pos[1, 2] + 1.0) < 1e-9
+    # rotation only, shuffled and mixed case
+    t2, r2, p2 = mocap.read_head_pose(write_tmp("ff_head2.csv", "Time,HEADROTZ,jawOpen,headrotx,headRotY\n0,3,0,1,2\n0.1,6,1,4,5\n"))
+    assert p2 is None and r2.tolist() == [[1, 2, 3], [4, 5, 6]], (r2, p2)
+    # old CSVs and Live Link Face CSVs hold no head pose
+    assert mocap.read_head_pose(SAMPLE_CSV) is None
+    assert mocap.read_head_pose(write_tmp("ff_old.csv", "time,jawOpen\n0,0\n0.1,1\n")) is None
+
+
+def test_22_head_pose_axes():
+    """The sign of each axis is checked in armature space, with an aligned bone and a rolled one."""
+    scene = S["scene"]
+    times = np.array([0.0, 0.1, 0.2])
+    for mode, roll in (("QUATERNION", 0.0), ("XYZ", 0.0), ("QUATERNION", math.radians(90)), ("YZX", math.radians(-40))):
+        arm = head_rig(mode, roll, parent=False)
+        try:
+            a = math.radians(30)
+            rot = np.array([[0, 0, 0], [0, a, 0], [0, 0, 0]])
+            assert mocap.apply_head_pose(arm, "Head", times, rot, None, 30, start_frame=1) == ["Head"]
+            fwd = Vector((0, -1, 0))  # the character looks along -Y
+            yaw = rotation_at(arm, "Head", 4) @ fwd
+            assert abs(deg(yaw, fwd) - 30) < 0.01 and yaw.x > 0.4, (mode, roll, yaw)  # to its left (+X)
+            assert deg(rotation_at(arm, "Head", 1) @ fwd, fwd) < 1e-3 and deg(rotation_at(arm, "Head", 7) @ fwd, fwd) < 1e-3
+
+            rot = np.array([[0, 0, 0], [a, 0, 0], [0, 0, 0]])  # pitch: positive looks down
+            mocap.apply_head_pose(arm, "Head", times, rot, None, 30)
+            pitch = rotation_at(arm, "Head", 4) @ fwd
+            assert abs(deg(pitch, fwd) - 30) < 0.01 and pitch.z < -0.4, (mode, roll, pitch)
+
+            left = Vector((1, 0, 0))
+            rot = np.array([[0, 0, 0], [0, 0, a], [0, 0, 0]])  # roll: the left side goes up
+            mocap.apply_head_pose(arm, "Head", times, rot, None, 30)
+            tilt = rotation_at(arm, "Head", 4) @ left
+            assert abs(deg(tilt, left) - 30) < 0.01 and tilt.z > 0.4, (mode, roll, tilt)
+
+            # the order is Ry * Rx * Rz (yaw, then pitch, then roll): all three at once
+            rot = np.array([[0, 0, 0], [0.3, 0.5, -0.2], [0, 0, 0]])
+            mocap.apply_head_pose(arm, "Head", times, rot, None, 30)
+            m = rotation_at(arm, "Head", 4)
+            face = (Matrix.Rotation(0.5, 3, "Y") @ Matrix.Rotation(0.3, 3, "X") @ Matrix.Rotation(-0.2, 3, "Z"))
+            axes = Matrix.Rotation(math.radians(90), 3, "X")  # face frame (X left, Y up, Z forward) -> armature
+            want = axes @ face @ axes.transposed()
+            assert (m @ want.inverted()).to_quaternion().angle < 1e-5, (mode, roll)
+        finally:
+            arm.animation_data_clear()
+            bpy.data.objects.remove(arm)
+    scene.frame_set(7)
+
+
+def test_23_head_pose_options():
+    from bpy_extras import anim_utils
+    scene = S["scene"]
+    times = np.array([0.0, 0.1, 0.2])
+    a = math.radians(30)
+    rot = np.array([[0, 0, 0], [0, a, 0], [0, 0, 0]])
+    pos = np.array([[0, 0, 0], [2.0, 0, -1.0], [0, 0, 0]])
+    fwd = Vector((0, -1, 0))
+    arm = head_rig()
+    try:
+        # gain halves the angle
+        mocap.apply_head_pose(arm, "Head", times, rot, None, 30, gain=0.5)
+        assert abs(deg(rotation_at(arm, "Head", 4) @ fwd, fwd) - 15) < 0.01
+        # the neck takes 30 %, the head the rest: the head ends at the full angle, the neck at 9 degrees
+        arm.animation_data_clear()
+        keyed = mocap.apply_head_pose(arm, "head", times, rot, None, 30, neck_bone="NECK", neck_share=0.3)
+        assert keyed == ["Head", "Neck"], keyed  # case-insensitive match, bones' own names back
+        assert abs(deg(rotation_at(arm, "Neck", 4) @ fwd, fwd) - 9) < 0.01
+        assert abs(deg(rotation_at(arm, "Head", 4) @ fwd, fwd) - 30) < 0.01
+        # translation needs a head bone that is not connected to its parent: say so instead of keying nothing
+        try:
+            mocap.apply_head_pose(arm, "Head", times, rot, pos, 30, translate=True)
+        except ValueError as e:
+            assert "Connected" in str(e), e
+        else:
+            raise AssertionError("expected ValueError")
+        # translation: scale 0.01 turns centimeters into meters, +X is the character's left, forward is -Y
+        arm.animation_data_clear()
+        for pb in arm.pose.bones:  # clearing the animation leaves the last evaluated pose behind
+            pb.rotation_quaternion = (1, 0, 0, 0)
+        bpy.context.view_layer.objects.active = arm
+        bpy.ops.object.mode_set(mode="EDIT")
+        arm.data.edit_bones["Head"].use_connect = False
+        bpy.ops.object.mode_set(mode="OBJECT")
+        mocap.apply_head_pose(arm, "Head", times, rot, pos, 30, translate=True, translate_scale=0.01)
+        scene.frame_set(4)
+        ev = arm.evaluated_get(bpy.context.evaluated_depsgraph_get())
+        moved = ev.pose.bones["Head"].matrix.translation - arm.data.bones["Head"].matrix_local.translation
+        # the head turned about its own base, so only the translation moves the base: 2 cm left, 1 cm back (+Y)
+        assert abs(moved.x - 0.02) < 1e-6 and abs(moved.y - 0.01) < 1e-6 and abs(moved.z) < 1e-6, moved
+        # other animation of the armature survives
+        arm.animation_data_clear()
+        arm.pose.bones["Neck"].location = (0.0, 0.0, 0.1)
+        arm.pose.bones["Neck"].keyframe_insert("location", frame=1)
+        action = arm.animation_data.action
+        mocap.apply_head_pose(arm, "Head", times, rot, None, 30)
+        assert arm.animation_data.action is action
+        bag = anim_utils.action_get_channelbag_for_slot(action, arm.animation_data.action_slot)
+        assert bag.fcurves.find('pose.bones["Neck"].location', index=2) is not None
+        assert bag.fcurves.find('pose.bones["Head"].rotation_quaternion', index=0) is not None
+        # errors name the problem
+        for kwargs, text in (({"head_bone": "Nope"}, "'Nope'"), ({"neck_bone": "Nope", "neck_share": 0.3}, "'Nope'")):
+            try:
+                mocap.apply_head_pose(arm, kwargs.get("head_bone", "Head"), times, rot, None, 30,
+                                      neck_bone=kwargs.get("neck_bone", ""), neck_share=kwargs.get("neck_share", 0.0))
+            except ValueError as e:
+                assert text in str(e) and "HeadRig" in str(e), e
+            else:
+                raise AssertionError("expected ValueError")
+        arm.pose.bones["Head"].rotation_mode = "AXIS_ANGLE"
+        try:
+            mocap.apply_head_pose(arm, "Head", times, rot, None, 30)
+        except ValueError as e:
+            assert "Axis-Angle" in str(e), e
+        else:
+            raise AssertionError("expected ValueError")
+    finally:
+        arm.animation_data_clear()
+        bpy.data.objects.remove(arm)
+        scene.frame_set(7)
+
+
+def test_24_head_pose_operator():
+    """Import CSV keys the shapes and the head bone, with the panel options; off and missing bone are soft."""
+    scene, head = S["scene"], S["head"]
+    t = bake.make_target(head)
+    bake.ensure_basis(t)
+    t.shape_key_add(name="jawOpen", from_mix=False)
+    arm = head_rig()
+    captureforge.register()
+    old_fps = scene.render.fps, scene.render.fps_base
+    scene.render.fps, scene.render.fps_base = 30, 1.0
+    try:
+        s = scene.faceforge
+        pair = s.pairs.add()
+        pair.source, pair.target = head, t
+        s.csv_path = write_tmp("ff_head.csv", HEAD_CSV)
+        s.head_armature = arm
+        fwd = Vector((0, -1, 0))
+        assert (s.head_pose, s.head_bone, s.neck_share, s.head_gain, s.head_translate) == (True, "Head", 0.0, 1.0, False)
+        assert bpy.ops.faceforge.import_csv() == {"FINISHED"}
+        assert abs(deg(rotation_at(arm, "Head", 4) @ fwd, fwd) - 30) < 0.01
+        assert t.data.shape_keys.animation_data.action is not None
+        # switched off: nothing keyed on the rig
+        arm.animation_data_clear()
+        s.head_pose = False
+        assert bpy.ops.faceforge.import_csv() == {"FINISHED"} and arm.animation_data is None
+        # on, with gain and a bone that does not exist: shapes still keyed, no error
+        s.head_pose, s.head_gain, s.head_bone = True, 0.5, "Nope"
+        assert bpy.ops.faceforge.import_csv() == {"FINISHED"} and arm.animation_data is None
+        s.head_bone = "Head"
+        assert bpy.ops.faceforge.import_csv() == {"FINISHED"}
+        assert abs(deg(rotation_at(arm, "Head", 4) @ fwd, fwd) - 15) < 0.01
+        # no armature picked: the one in the scene that has the bone is used
+        arm.animation_data_clear()
+        s.head_armature = None
+        assert bpy.ops.faceforge.import_csv() == {"FINISHED"} and arm.animation_data is not None
+        # an old CSV imports as before
+        arm.animation_data_clear()
+        s.csv_path = write_tmp("ff_old.csv", "time,jawOpen\n0,0\n0.1,1\n")
+        assert bpy.ops.faceforge.import_csv() == {"FINISHED"} and arm.animation_data is None
+    finally:
+        s.pairs.clear()
+        captureforge.unregister()
+        scene.render.fps, scene.render.fps_base = old_fps
+        t.data.shape_keys.animation_data_clear()
+        arm.animation_data_clear()
+        bpy.data.objects.remove(arm)
+        bpy.data.objects.remove(t)
+        scene.frame_set(7)
 
 
 TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_")]

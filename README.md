@@ -30,6 +30,8 @@ very welcome.
   deform modifiers and Armature are baked exactly as you see them. Every mesh gets the same key names.
 - **Split Left/Right** with a smooth falloff across the midline (no step on the nose, lips or chin).
 - **Mocap import.** CSV from Live Link Face or a generic CSV (`time` in seconds plus one column per shape).
+- **Head pose.** `Video to face` also writes the head rotation, and the import keys it on your head bone
+  (default `Head`, with an optional neck share, a gain and an on/off switch).
 - **Video to face**. Pick a video, FaceForge runs MediaPipe Face Landmarker in a separate Python and keys
   the result onto your shape keys. Works with any phone (Android friendly), no iPhone needed.
 - **Live webcam.** A helper process streams the 52 scores over localhost UDP; Blender drives the shape keys
@@ -121,6 +123,29 @@ CSV import, **Video to face** and **Live webcam** work today.
 FaceForge reads a generic CSV: a `time` column in seconds and one column per ARKit shape, in the same
 spelling as the shape keys (`eyeBlinkLeft`, ...). Column names are matched case-insensitively and a
 `column=key` rename map is available.
+
+**Head pose.** The video helper also writes six optional columns after the shapes (`--no-head-pose` leaves them out):
+
+| Column | Unit | Meaning |
+|---|---|---|
+| `headRotX`, `headRotY`, `headRotZ` | radians | pitch, yaw, roll of the head relative to its neutral pose (zero = the head of the neutral seconds) |
+| `headPosX`, `headPosY`, `headPosZ` | centimeters | head position relative to the neutral one (MediaPipe's scale: approximate) |
+
+The head frame is X = the person's left, Y up, Z out of the face, and the angles are in the order `Ry * Rx * Rz`
+(yaw, then pitch, then roll; Blender Euler `ZXY`). A positive yaw turns to the person's left, a positive pitch looks
+down, a positive roll takes the left side up. The angles come from the MediaPipe facial transformation matrix, are
+made continuous across frames (no 360 degree jumps), and get the same `Smooth` and neutral calibration as the shapes;
+frames without a face hold the last pose. `Gain` does not scale them: use `Head gain` on import.
+
+On import (`4. Mocap CSV`), `Head pose` keys the rotation on the bone called `Head` (any case) of the rig you pick
+in `Rig`; empty, it uses the armature of the targets, else the only armature in the scene that has the bone.
+`Neck share` (0.3 = 30 %) gives that part of the rotation to the `Neck` bone and the head bone keeps the rest, so
+the two add up. `Head gain` multiplies the angles (0.5 for a subtle character). `Translation` also moves the head
+bone with `Scale` scene units per centimeter (0.01 = meters); it needs a head bone that is not Connected, and the
+movement is that of the face, not of the neck. Keys follow the bone's rotation mode (Quaternion or Euler) and go into
+the rig's current action (a new `<rig>_headmocap` one when it has none); other channels of the action are untouched.
+The rig is assumed to be in Blender's default orientation (the character faces -Y, +Z up); bone rolls do not matter.
+A CSV without these columns (older files, Live Link Face) imports exactly as before. Unchecking `Head pose` skips it.
 
 **From a video** (phone recording, Iriun Webcam recording, anything OpenCV can open):
 
@@ -243,7 +268,7 @@ Validate the manifest with `blender --command extension validate captureforge`.
   Topology-changing modifiers (Subsurf, Mirror, Solidify, Geometry Nodes, ...) are switched off during the
   bake and restored afterwards.
 - The split assumes the midline is at X = 0 of the object.
-- Head and eye rotations from Live Link Face are ignored for now.
+- Head and eye rotations from Live Link Face are ignored for now; head rotation comes from `Video to face` only.
 - The live capture timer (the `Start` button) is a modal operator and is tested by hand; its receive path, parsing,
   recording and helper handling are covered by the headless tests.
 - The review sheet is a Workbench render: good for checking shape, not for presentation.
@@ -253,7 +278,7 @@ Validate the manifest with `blender --command extension validate captureforge`.
 - Presets of starting poses for the generated rig (e.g. `jawOpen` = jaw rotation), so you only tweak style.
 - Corrective shapes for combinations (`jawOpen + mouthSmile`), baked from the combined pose.
 - Export checker: exact 52 names on every mesh, order, blendshape normals, unzeroed keys.
-- Head and eye rotation from the mocap onto bones; Live Link Face UDP streaming.
+- Eye rotation from the mocap onto bones; Live Link Face UDP streaming.
 - Loadable name lists (Audio2Face and others).
 - Listing on extensions.blender.org.
 

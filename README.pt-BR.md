@@ -32,6 +32,8 @@ aprendendo como eu. Issues, ideias e pull requests são muito bem-vindos.
 - **Split Esquerda/Direita** com falloff suave na linha média (sem degrau no nariz, lábios ou queixo).
 - **Importação de mocap.** CSV do Live Link Face ou CSV genérico (`time` em segundos mais uma coluna por
   shape).
+- **Pose da cabeça.** O `Video to face` também grava a rotação da cabeça, e a importação aplica no seu osso de
+  cabeça (padrão `Head`, com parte opcional para o pescoço, ganho e liga/desliga).
 - **Vídeo para rosto**. Escolha um vídeo, o FaceForge roda o MediaPipe Face Landmarker num Python separado
   e grava o resultado nas suas shape keys. Funciona com qualquer celular (Android incluso), sem iPhone.
 - **Webcam ao vivo.** Um processo auxiliar manda os 52 valores por UDP no localhost; o Blender aciona as
@@ -129,6 +131,30 @@ A importação de CSV, o **Video to face** e a **Live webcam** funcionam hoje.
 O FaceForge lê um CSV genérico: uma coluna `time` em segundos e uma coluna por shape ARKit, com a mesma
 grafia das shape keys (`eyeBlinkLeft`, ...). Os nomes casam sem diferenciar maiúsculas e há um mapa de
 renomeação `coluna=key`.
+
+**Pose da cabeça.** O helper de vídeo também grava seis colunas opcionais depois dos shapes (`--no-head-pose` tira):
+
+| Coluna | Unidade | Significado |
+|---|---|---|
+| `headRotX`, `headRotY`, `headRotZ` | radianos | pitch, yaw, roll da cabeça em relação à pose neutra (zero = a cabeça dos segundos neutros) |
+| `headPosX`, `headPosY`, `headPosZ` | centímetros | posição da cabeça em relação à neutra (escala do MediaPipe: aproximada) |
+
+O referencial da cabeça é X = esquerda da pessoa, Y para cima, Z para fora do rosto, e os ângulos seguem a ordem
+`Ry * Rx * Rz` (yaw, depois pitch, depois roll; Euler `ZXY` do Blender). Yaw positivo vira para a esquerda da
+pessoa, pitch positivo olha para baixo, roll positivo leva o lado esquerdo para cima. Os ângulos vêm da matriz de
+transformação facial do MediaPipe, ficam contínuos entre os quadros (sem saltos de 360 graus) e recebem o mesmo
+`Smooth` e a mesma calibração do neutro dos shapes; quadros sem rosto repetem a última pose. O `Gain` não escala
+esses ângulos: use o `Head gain` na importação.
+
+Na importação (`4. Mocap CSV`), `Head pose` aplica a rotação no osso `Head` (qualquer caixa) do rig escolhido em
+`Rig`; vazio, usa a armature dos alvos, senão a única armature da cena que tem o osso. `Neck share` (0,3 = 30 %)
+dá essa parte da rotação ao osso `Neck` e o osso da cabeça fica com o resto, então as duas somam. `Head gain`
+multiplica os ângulos (0,5 para um personagem sutil). `Translation` também move o osso da cabeça, com `Scale`
+unidades de cena por centímetro (0,01 = metros); precisa de um osso de cabeça sem Connected, e o movimento é o do
+rosto, não o do pescoço. As keys seguem o modo de rotação do osso (Quaternion ou Euler) e vão para a action atual do
+rig (uma `<rig>_headmocap` nova se ele não tiver nenhuma); os outros canais da action ficam intactos. Supõe-se o rig
+na orientação padrão do Blender (o personagem olha para -Y, +Z para cima); o roll dos ossos não importa. Um CSV sem
+essas colunas (arquivos antigos, Live Link Face) importa como antes. Desmarcar `Head pose` pula tudo isso.
 
 **A partir de um vídeo** (gravação de celular, gravação do Iriun Webcam, qualquer coisa que o OpenCV abra):
 
@@ -254,7 +280,7 @@ as preferências do add-on estão vazias. Valide o manifesto com `blender --comm
   Modificadores que mudam topologia (Subsurf, Mirror, Solidify, Geometry Nodes, ...) são desligados durante
   o bake e religados no fim.
 - O split assume a linha média em X = 0 do objeto.
-- Rotações de cabeça e olhos do Live Link Face são ignoradas por enquanto.
+- Rotações de cabeça e olhos do Live Link Face são ignoradas por enquanto; a rotação da cabeça vem só do `Video to face`.
 - O timer da captura ao vivo (o botão `Start`) é um operador modal e é testado na mão; o caminho de
   recepção, a leitura dos pacotes, a gravação e o tratamento do auxiliar são cobertos pelos testes headless.
 - O review sheet é um render Workbench: serve para conferir forma, não para apresentação.
@@ -265,7 +291,7 @@ as preferências do add-on estão vazias. Valide o manifesto com `blender --comm
   estilo.
 - Shapes corretivas para combinações (`jawOpen + mouthSmile`), baked a partir da pose combinada.
 - Checker de export: os 52 nomes exatos em toda malha, ordem, normais de blendshape, keys não zeradas.
-- Rotação de cabeça e olhos do mocap para ossos; streaming UDP do Live Link Face.
+- Rotação dos olhos do mocap para ossos; streaming UDP do Live Link Face.
 - Listas de nomes carregáveis (Audio2Face e outras).
 - Publicação em extensions.blender.org.
 

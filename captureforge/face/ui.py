@@ -25,6 +25,10 @@ def _is_mesh(self, obj):
     return obj.type == "MESH"
 
 
+def _is_armature(self, obj):
+    return obj.type == "ARMATURE"
+
+
 class FFPair(bpy.types.PropertyGroup):
     source: PointerProperty(name="Source", type=bpy.types.Object, poll=_is_mesh,
                             description="Rigged mesh that is posed")
@@ -64,6 +68,22 @@ class FFSettings(bpy.types.PropertyGroup):
                            description="Frame rate of the Timecode column (Live Link Face default 60)")
     csv_mapping: StringProperty(name="Rename", description="Optional column=key pairs, comma separated")
     mocap_start_frame: IntProperty(name="Start frame", default=1)
+    head_pose: BoolProperty(name="Head pose", default=True,
+                            description="Also key the head rotation of the CSV (headRot columns) on a bone")
+    head_armature: PointerProperty(name="Rig", type=bpy.types.Object, poll=_is_armature,
+                                   description="Armature with the head bone; empty = the one on the targets, "
+                                               "else the only one in the scene that has the bone")
+    head_bone: StringProperty(name="Head bone", default="Head", description="Matched without caring about case")
+    neck_bone: StringProperty(name="Neck bone", default="Neck")
+    neck_share: FloatProperty(name="Neck share", default=0.0, min=0.0, max=1.0, subtype="FACTOR",
+                              description="Part of the rotation given to the neck bone (0.3 = 30 %); "
+                                          "the head bone keeps the rest")
+    head_gain: FloatProperty(name="Head gain", default=1.0, min=0.0,
+                             description="Multiplies the head angles (0.5 = half as much)")
+    head_translate: BoolProperty(name="Translation", default=False,
+                                 description="Also move the head bone with the head position of the video")
+    head_translate_scale: FloatProperty(name="Scale", default=0.01, min=0.0,
+                                        description="Scene units per centimeter of head movement (0.01 = meters)")
     fit_mode: EnumProperty(name="Rig", default="FACEFORGE", items=[
         ("FACEFORGE", "FaceForge rig", "Lean face rig with automatic weights"),
         ("RIGIFY", "Rigify metarig", "Rigify face metarig fitted to the face (needs the Rigify add-on)"),
@@ -172,6 +192,20 @@ class FACEFORGE_PT_main(bpy.types.Panel):
         row.prop(s, "csv_fps")
         row.prop(s, "mocap_start_frame")
         box.prop(s, "csv_mapping")
+        box.prop(s, "head_pose")
+        if s.head_pose:
+            box.prop(s, "head_armature")
+            row = box.row(align=True)
+            row.prop(s, "head_bone", text="")
+            row.prop(s, "neck_bone", text="")
+            row = box.row(align=True)
+            row.prop(s, "neck_share")
+            row.prop(s, "head_gain")
+            row = box.row(align=True)
+            row.prop(s, "head_translate")
+            sub = row.row()
+            sub.active = s.head_translate
+            sub.prop(s, "head_translate_scale")
         box.operator("faceforge.import_csv")
 
         box = lay.box()

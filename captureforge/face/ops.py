@@ -34,7 +34,28 @@ def _import_csv(context, path):
     msg = f"{len(matched)} keys animated, {n} rows"
     if unmatched:
         msg += f"; unmatched columns: {', '.join(unmatched)}"
+    if s.head_pose:
+        msg += f"; {_import_head_pose(context, path)}"
     return msg
+
+
+def _import_head_pose(context, path):
+    """Key the CSV's head pose on the head bone. A missing piece is a note, never an error: the shapes are keyed."""
+    s = context.scene.faceforge
+    pose = mocap.read_head_pose(path, s.csv_fps)
+    if pose is None:
+        return "no head pose in this CSV"
+    arm = s.head_armature or mocap.find_armature(context.scene, _targets(context), s.head_bone)
+    if arm is None:
+        return f"head pose skipped: no armature with a '{s.head_bone}' bone (pick the rig)"
+    times, rot, pos = pose
+    fps = context.scene.render.fps / context.scene.render.fps_base
+    try:
+        keyed = mocap.apply_head_pose(arm, s.head_bone, times, rot, pos, fps, s.mocap_start_frame, s.head_gain,
+                                      s.neck_bone, s.neck_share, s.head_translate, s.head_translate_scale)
+    except ValueError as e:
+        return f"head pose skipped: {e}"
+    return f"head pose keyed on {', '.join(keyed)}"
 
 
 class _Op(bpy.types.Operator):
