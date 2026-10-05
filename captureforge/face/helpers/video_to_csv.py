@@ -8,7 +8,7 @@ Euler order Ry * Rx * Rz = yaw, pitch, roll in the head frame: X = the person's 
 and headPosX/Y/Z (centimeters, relative to the neutral position). Readers that only know shapes ignore them.
 
 The pure processing steps (hold_gaps, calibrate, smooth, head_pose, in ../capture/post.py) need no third-party packages;
-cv2/mediapipe are imported only when a video is actually processed.
+cv2 and the tracker (helpers/tracker.py, the only MediaPipe user) load only when a video is processed.
 """
 
 import argparse
@@ -18,30 +18,9 @@ from pathlib import Path
 
 # The shared post-processing lives in ../capture/post.py (also used by the live capture bake in Blender).
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "capture"))
+from tracker import ARKIT_52, MODEL_URL, Tracker, TrackerError  # noqa: E402,F401  (same folder)
 from post import (HEAD_COLUMNS, calibrate, euler_to_matrix, head_pose, hold_gaps, matrix_to_euler,  # noqa: E402,F401
                   orthonormalize, process, smooth, unbreak)
-
-# Same names and case FaceForge expects (faceforge/presets.py ARKIT_52). MediaPipe returns 51 of
-# them (no tongueOut) plus "_neutral", which is dropped. Columns are written in this order.
-ARKIT_52 = [
-    "eyeBlinkLeft", "eyeLookDownLeft", "eyeLookInLeft", "eyeLookOutLeft",
-    "eyeLookUpLeft", "eyeSquintLeft", "eyeWideLeft",
-    "eyeBlinkRight", "eyeLookDownRight", "eyeLookInRight", "eyeLookOutRight",
-    "eyeLookUpRight", "eyeSquintRight", "eyeWideRight",
-    "jawForward", "jawLeft", "jawRight", "jawOpen",
-    "mouthClose", "mouthFunnel", "mouthPucker", "mouthLeft", "mouthRight",
-    "mouthSmileLeft", "mouthSmileRight", "mouthFrownLeft", "mouthFrownRight",
-    "mouthDimpleLeft", "mouthDimpleRight", "mouthStretchLeft", "mouthStretchRight",
-    "mouthRollLower", "mouthRollUpper", "mouthShrugLower", "mouthShrugUpper",
-    "mouthPressLeft", "mouthPressRight", "mouthLowerDownLeft", "mouthLowerDownRight",
-    "mouthUpperUpLeft", "mouthUpperUpRight",
-    "browDownLeft", "browDownRight", "browInnerUp", "browOuterUpLeft", "browOuterUpRight",
-    "cheekPuff", "cheekSquintLeft", "cheekSquintRight",
-    "noseSneerLeft", "noseSneerRight",
-    "tongueOut",
-]
-MODEL_URL = ("https://storage.googleapis.com/mediapipe-models/face_landmarker/"
-             "face_landmarker/float16/1/face_landmarker.task")
 
 
 def write_csv(path, names, times, rows, head_rot=None, head_pos=None):
@@ -61,37 +40,38 @@ def _fail(msg):
     sys.exit(f"error: {msg}")
 
 
-def _import_deps():
+def _import_cv():
     try:
         import cv2
         import numpy as np
-        import mediapipe as mp
-        from mediapipe.tasks import python as mp_python
-        from mediapipe.tasks.python import vision
     except ImportError as e:
         _fail(f"missing package ({e.name}). Install with: pip install -r requirements.txt")
-    return cv2, np, mp, mp_python, vision
+    return cv2, np
+
+
+def open_tracker(mode, model):
+    """Tracker.image / video / live on the model, or exit with the tracker's message."""
+    try:
+        return getattr(Tracker, mode)(model)
+    except TrackerError as e:
+        _fail(str(e))
 
 
 def detect(video, model, want_landmarks, boxes=None):
-    """Run Face Landmarker over every frame (inside the per-frame normalized box when `boxes` is given).
+    """Run the face tracker over every frame (inside the per-frame normalized box when `boxes` is given).
     Returns (times_s, rows, names, landmarks, mats): rows[i] is None when no face; landmarks[i] is an
     (N, 2) array of normalized points or None (only filled when want_landmarks); mats[i] is the facial
     transformation matrix as 16 row-major floats, or None."""
-    cv2, np, mp, mp_python, vision = _import_deps()
-    if not Path(model).is_file():
-        _fail(f"model file not found: {model}\nDownload it (about 3.6 MB) from {MODEL_URL}")
+    cv2, np = _import_cv()
+    tracker = open_tracker("video", model)
     cap = cv2.VideoCapture(str(video))
     if not cap.isOpened():
+        tracker.close()
         _fail(f"cannot open video: {video}")
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
 
-    opts = vision.FaceLandmarkerOptions(
-        base_options=mp_python.BaseOptions(model_asset_path=str(model)),
-        running_mode=vision.RunningMode.VIDEO, output_face_blendshapes=True,
-        output_facial_transformation_matrixes=True, num_faces=1)
     times, scores, marks, mats, last_ms, i = [], [], [], [], -1.0, 0
-    with vision.FaceLandmarker.create_from_options(opts) as lm:
+    with tracker:
         while True:
             ok, frame = cap.read()
             if not ok:
@@ -99,23 +79,14 @@ def detect(video, model, want_landmarks, boxes=None):
             ms = cap.get(cv2.CAP_PROP_POS_MSEC)
             if i > 0 and ms <= last_ms:  # container gave no usable timestamp: fall back to index/fps
                 ms = i * 1000.0 / fps
-            ms = max(ms, last_ms + 1)    # MediaPipe VIDEO mode needs strictly increasing ms
+            ms = max(ms, last_ms + 1)    # video mode needs strictly increasing ms
             last_ms = ms
             if boxes is not None:
                 frame = crop_frame(frame, box_at(boxes, i))
-            img = mp.Image(image_format=mp.ImageFormat.SRGB,
-                           data=np.ascontiguousarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)))
-            res = lm.detect_for_video(img, int(ms))
-            if res.face_blendshapes:
-                scores.append({c.category_name: c.score for c in res.face_blendshapes[0]})
-                marks.append(np.array([(p.x, p.y) for p in res.face_landmarks[0]], np.float32)
-                             if want_landmarks else None)
-                mats.append([float(x) for x in np.asarray(res.facial_transformation_matrixes[0]).ravel()]
-                            if res.facial_transformation_matrixes else None)
-            else:
-                scores.append(None)
-                marks.append(None)
-                mats.append(None)
+            res = tracker.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), int(ms))
+            scores.append(res.scores)
+            marks.append(res.landmarks[:, :2] if res.face and want_landmarks else None)
+            mats.append([float(x) for x in res.matrix.ravel()] if res.matrix is not None else None)
             times.append(ms / 1000.0)
             i += 1
     cap.release()
@@ -123,7 +94,7 @@ def detect(video, model, want_landmarks, boxes=None):
         _fail("video has no frames")
     seen = {k for r in scores if r for k in r}
     names = [n for n in ARKIT_52 if n in seen]
-    unknown = sorted(seen - set(ARKIT_52) - {"_neutral"})
+    unknown = sorted(seen - set(ARKIT_52))
     if unknown:
         print(f"warning: ignoring unexpected shapes: {unknown}", file=sys.stderr)
     rows = [None if r is None else [r.get(n, 0.0) for n in names] for r in scores]
@@ -131,7 +102,7 @@ def detect(video, model, want_landmarks, boxes=None):
 
 
 def write_preview(video, out, rows, names, marks):
-    cv2, *_ = _import_deps()
+    cv2, _ = _import_cv()
     cap = cv2.VideoCapture(str(video))
     w, h = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0

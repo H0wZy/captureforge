@@ -15,9 +15,9 @@
 ## Phase 1: Tracker contract and shared post-processing (US2, US4, FR-004)
 
 - [x] T004 [P] Tests `tests/test_capture_post.py`: `post.process` equals the current `video_to_csv` steps on the same arrays (golden values from the current functions), including head pose
-- [ ] T005 [P] Test `tests/test_capture_contract.py`: only `helpers/tracker.py` imports `mediapipe` (a grep over the package); `Result` shapes and `None` handling with a stub tracker
+- [x] T005 [P] Test `tests/test_capture_contract.py`: only `helpers/tracker.py` imports `mediapipe` (a grep over the package); `Result` shapes and `None` handling with a stub tracker
 - [x] T006 Move the pure steps to `captureforge/face/capture/post.py` (importable by path from the helper), make `video_to_csv.py` use it; existing tests stay green
-- [ ] T007 Implement `captureforge/face/helpers/tracker.py` (open, process, close; image, video and live-stream constructors) and move `video_to_csv.detect`, `webcam_stream.py`, `face_landmarks.py` behind it; write `docs/TRACKER-CONTRACT.md`
+- [x] T007 Implement `captureforge/face/helpers/tracker.py` (open, process, close; image, video and live-stream constructors) and move `video_to_csv.detect`, `webcam_stream.py`, `face_landmarks.py` behind it; write `docs/TRACKER-CONTRACT.md`
 
 ## Phase 2: Protocol and helper (US1, FR-002, FR-003)
 

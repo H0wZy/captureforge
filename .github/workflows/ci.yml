@@ -27,11 +27,12 @@ jobs:
           python3 tests/test_video_to_csv.py
           python3 tests/test_webcam_stream.py
           python3 tests/test_capture_post.py
+          python3 tests/test_capture_contract.py
       # Pure body tests need numpy; installed here for the test run only (it is not a dependency of the add-on).
       - run: |
           python3 -m venv .venv-dev
           .venv-dev/bin/pip install numpy
-          for t in tests/test_body_*.py; do .venv-dev/bin/python "$t" || exit 1; done
+          for t in tests/test_body_*.py tests/test_capture_*.py; do .venv-dev/bin/python "$t" || exit 1; done
 
   # Stage 2: the real suite inside Blender, oldest supported LTS and the current release.
   blender:
