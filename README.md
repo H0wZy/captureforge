@@ -12,7 +12,8 @@ one sidebar tab (`CaptureForge`):
 | **ScanForge** | Face and body scan from a 360-degree video. | roadmap |
 
 License: GPL-3.0-or-later. Blender 4.4 LTS or newer (developed on 5.2). Pure Python, no extra packages inside
-Blender. The FaceForge sections come first; [BodyForge](#bodyforge-body-mocap-from-one-phone-video) has its own section.
+Blender. **Platforms:** Windows, Linux and Apple Silicon macOS (M1 and later) are supported; **Intel macOS is not
+supported** (MediaPipe publishes no current wheel for it). The FaceForge sections come first; [BodyForge](#bodyforge-body-mocap-from-one-phone-video) has its own section.
 
 ## Why this exists
 

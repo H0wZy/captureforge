@@ -12,7 +12,8 @@ módulos que compartilham uma aba na barra lateral (`CaptureForge`):
 | **ScanForge** | Scan de rosto e corpo a partir de um vídeo 360 graus. | roadmap |
 
 Licença: GPL-3.0-or-later. Blender 4.4 LTS ou mais novo (desenvolvido no 5.2). Python puro, sem pacotes
-extras dentro do Blender. As seções do FaceForge vêm primeiro; o
+extras dentro do Blender. **Plataformas:** Windows, Linux e macOS com Apple Silicon (M1 em diante) são suportados;
+**macOS Intel não é suportado** (o MediaPipe não publica roda atual para ele). As seções do FaceForge vêm primeiro; o
 [BodyForge](#bodyforge-mocap-corporal-a-partir-de-um-vídeo-de-celular) tem a sua própria seção.
 
 ## Por que isso existe
