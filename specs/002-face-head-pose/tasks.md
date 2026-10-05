@@ -17,4 +17,4 @@
 ## Phase 3: Docs and checks
 
 - [x] T007 README.md and README.pt-BR.md: CSV columns, options, known limit removed, roadmap line removed
-- [ ] T008 Run the whole test suite (pure and Blender 5.2) and the real-MediaPipe run on a real video (not committed)
+- [x] T008 Run the whole test suite (pure and Blender 5.2) and the real-MediaPipe run on a real video (not committed). Done 2026-10-05: 13 pure + 24 FaceForge + 20 BodyForge tests pass on Blender 5.2.1 (4.4 is CI-only here). On a 21 s, 1273-frame phone clip the matrix has scale 1, rotation near identity and translation Z negative (-22.6 cm), so the OpenGL camera convention holds; against landmark geometry the signs are yaw +0.96, pitch -0.96 (forehead depth minus chin depth) and roll -0.96 (image-space cheek-line angle), all as documented
