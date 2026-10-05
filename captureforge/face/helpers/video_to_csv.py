@@ -2,6 +2,7 @@
 
 Usage: python video_to_csv.py input.mp4 -o out.csv [--model face_landmarker.task]
        [--smooth 0..1] [--neutral-seconds 2] [--gain 1.0] [--preview out_preview.mp4] [--no-head-pose]
+       [--capture take.capture.npz]
 
 Besides the shape columns the CSV gets the head pose: headRotX/Y/Z (radians, relative to the neutral head,
 Euler order Ry * Rx * Rz = yaw, pitch, roll in the head frame: X = the person's left, Y up, Z out of the face)
@@ -34,6 +35,27 @@ def write_csv(path, names, times, rows, head_rot=None, head_pos=None):
             w.writerow([f"{t:.6f}"] + [f"{x:.5f}" for x in list(r) + extra])
 
 
+def write_capture(path, times, raw, marks, mats, size):
+    """The capture file of one take (spec 004 capture file, interface 2; spec 005 calibrates from it): per frame
+    the raw scores in ARKIT_52 order (absent names 0), the 478 normalized landmarks and the 4x4 head matrix, NaN
+    where there is no face. raw[i]: {name: score} or None. It is face data: written only when asked (--capture)."""
+    import numpy as np
+    n = len(times)
+    scores = np.full((n, len(ARKIT_52)), np.nan, np.float32)
+    landmarks = np.full((n, 478, 3), np.nan, np.float32)
+    matrices = np.full((n, 4, 4), np.nan, np.float32)
+    for i in range(n):
+        if raw[i] is not None:
+            scores[i] = [raw[i].get(k, 0.0) for k in ARKIT_52]
+        if marks[i] is not None:
+            landmarks[i] = marks[i]
+        if mats[i] is not None:
+            matrices[i] = np.asarray(mats[i], np.float32).reshape(4, 4)
+    np.savez_compressed(path, interface=2, times=np.asarray(times, np.float64), valid=~np.isnan(scores).any(axis=1),
+                        landmarks=landmarks, scores=scores, names=np.array(ARKIT_52), size=np.array(size),
+                        mats=matrices)
+
+
 # ---- video / MediaPipe ------------------------------------------------------------------------
 
 def _fail(msg):
@@ -59,8 +81,8 @@ def open_tracker(mode, model):
 
 def detect(video, model, want_landmarks, boxes=None):
     """Run the face tracker over every frame (inside the per-frame normalized box when `boxes` is given).
-    Returns (times_s, rows, names, landmarks, mats): rows[i] is None when no face; landmarks[i] is an
-    (N, 2) array of normalized points or None (only filled when want_landmarks); mats[i] is the facial
+    Returns (times_s, rows, names, landmarks, mats): rows[i] is None when no face; landmarks[i] is the (478, 3)
+    array of normalized points or None (only filled when want_landmarks); mats[i] is the facial
     transformation matrix as 16 row-major floats, or None."""
     cv2, np = _import_cv()
     tracker = open_tracker("video", model)
@@ -85,7 +107,7 @@ def detect(video, model, want_landmarks, boxes=None):
                 frame = crop_frame(frame, box_at(boxes, i))
             res = tracker.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), int(ms))
             scores.append(res.scores)
-            marks.append(res.landmarks[:, :2] if res.face and want_landmarks else None)
+            marks.append(res.landmarks if res.face and want_landmarks else None)
             mats.append([float(x) for x in res.matrix.ravel()] if res.matrix is not None else None)
             times.append(ms / 1000.0)
             i += 1
@@ -112,7 +134,7 @@ def write_preview(video, out, rows, names, marks):
         if not ok:
             break
         if marks[i] is not None:
-            for x, y in marks[i]:
+            for x, y in marks[i][:, :2]:
                 cv2.circle(frame, (int(x * w), int(y * h)), 1, (0, 255, 0), -1)
         top = sorted(zip(names, rows[i]), key=lambda p: -p[1])[:5]
         for k, (n, val) in enumerate(top):
@@ -133,6 +155,8 @@ def build_parser():
     ap.add_argument("--gain", type=float, default=1.0)
     ap.add_argument("--preview", help="write a debug video with landmarks and the top 5 shapes")
     ap.add_argument("--no-head-pose", action="store_true", help="do not write the headRot/headPos columns")
+    ap.add_argument("--capture", help="also write the per-frame raw scores, landmarks and head matrices to this .npz "
+                                      "(face data; the actor calibration reads it)")
     ap.add_argument("--crop", help="BodyForge landmarks.npz with a per-frame head box: track the face inside that "
                                    "crop (a face in a full-body frame is small)")
     return ap
@@ -180,8 +204,10 @@ def main():
         if a.preview:
             print("warning: --preview is not drawn with --crop", file=sys.stderr)
             a.preview = None
+        if a.capture:
+            _fail("--capture needs the whole frame: it cannot be combined with --crop")
 
-    times, raw, names, marks, mats = detect(a.video, a.model, bool(a.preview), boxes)
+    times, raw, names, marks, mats = detect(a.video, a.model, bool(a.preview or a.capture), boxes)
     try:
         out = process(times, raw, mats, a.neutral_seconds, a.gain, a.smooth, head=not a.no_head_pose)
     except ValueError as e:
@@ -192,6 +218,13 @@ def main():
     write_csv(a.output, names, times, rows, rot, pos)
     print(f"wrote {a.output}: {len(rows)} frames, {times[-1]:.2f} s, {len(names)} shapes"
           + (", head pose" if rot else ""))
+    if a.capture:
+        cv2, _ = _import_cv()
+        cap = cv2.VideoCapture(str(a.video))
+        size = (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
+        cap.release()
+        write_capture(a.capture, times, [None if r is None else dict(zip(names, r)) for r in raw], marks, mats, size)
+        print(f"wrote {a.capture}")
     if a.preview:
         write_preview(a.video, a.preview, rows, names, marks)
         print(f"wrote {a.preview}")

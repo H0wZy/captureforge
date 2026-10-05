@@ -16,7 +16,7 @@
 
 ## Phase 2: Capture file (US1)
 
-- [ ] T006 [US1] Test in `tests/test_video_to_csv.py`, then `--capture PATH` in `captureforge/face/helpers/video_to_csv.py` (interface 2: times, valid, landmarks, raw scores, names, size, head matrices; faceless frames NaN); `load_capture` in `calib.py`; `.gitignore` gets `*.capture.npz` and `*.faceprofile.json`
+- [x] T006 [US1] Test in `tests/test_video_to_csv.py`, then `--capture PATH` in `captureforge/face/helpers/video_to_csv.py` (interface 2: times, valid, landmarks, raw scores, names, size, head matrices; faceless frames NaN); `load_capture` in `calib.py`; `.gitignore` gets `*.capture.npz` and `*.faceprofile.json`. Also `calibrate(capture, label)`, the whole path from a capture to a profile and its report. Smoke-tested 2026-10-05 with the real tracker on an unscripted 32 s clip: the capture file is written (960 of 960 frames, head pitch -11.5 degrees) and the calibration refuses it, listing the 4 segments it found. Segmentation uses the landmarks: the score fallback cannot see expressions the tracker misses (cheek puff, sneer) and says so
 
 ## Phase 3: Gate (needs the maintainer's recordings)
 

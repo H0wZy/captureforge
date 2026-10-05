@@ -350,3 +350,68 @@ def report_lines(profile, ev):
     if profile.get("undetected"):
         lines.append("Not detected for this actor (kept as tracked): " + ", ".join(profile["undetected"]))
     return lines
+
+
+# ---- from a capture file to a profile --------------------------------------------------------------------------
+
+def load_capture(path):
+    """A capture file (interface 2, written by video_to_csv.py --capture) or a spec 003 landmark file (interface 1,
+    no head matrices): times, valid, landmarks, scores (raw, NaN without a face), names, size, mats (or None)."""
+    with np.load(path, allow_pickle=False) as d:
+        try:
+            out = {k: d[k] for k in ("interface", "times", "valid", "landmarks", "scores", "names", "size")}
+        except KeyError as e:
+            raise CalibrationError(f"{path} is not a FaceForge capture file (missing {e})") from e
+        mats = d["mats"] if "mats" in d.files else None
+    if int(out["interface"]) not in (1, 2):
+        raise CalibrationError(f"{path}: capture file version {int(out['interface'])} is not supported")
+    return {"times": out["times"].astype(float), "valid": out["valid"].astype(bool),
+            "landmarks": out["landmarks"].astype(float), "scores": out["scores"].astype(float),
+            "names": [str(n) for n in out["names"]], "size": tuple(int(x) for x in out["size"]),
+            "mats": None if mats is None else mats.astype(float)}
+
+
+def neutral_scores(cap, lead=LEAD_SECONDS):
+    """(c, neutral frame indices): raw scores minus their mean over the valid frames of the first `lead` seconds,
+    clamped to 0..1 (the video path's neutral calibration, gain 1); frames without a face are 0."""
+    t, valid = np.asarray(cap["times"], float), np.asarray(cap["valid"], bool)
+    raw = np.asarray(cap["scores"], float)
+    neutral = np.flatnonzero(valid & (t - t[0] < lead))
+    base = np.nanmean(raw[neutral], axis=0) if len(neutral) else np.zeros(raw.shape[1])
+    c = np.clip(np.nan_to_num(raw - base), 0.0, 1.0)
+    c[~valid] = 0.0
+    return c, neutral
+
+
+def head_pitch_deg(mats, valid):
+    """Mean head pitch in degrees from the facial transformation matrices (None without matrices)."""
+    if mats is None:
+        return None
+    m = np.asarray(mats, float)[np.asarray(valid, bool)]
+    m = m[~np.isnan(m).any(axis=(1, 2))]
+    if not len(m):
+        return None
+    r = m[:, :3, :3] / np.linalg.norm(m[:, :3, :3], axis=1, keepdims=True)
+    return round(float(np.degrees(np.arcsin(np.clip(-r[:, 1, 2], -1, 1))).mean()), 1)
+
+
+def calibrate(cap, label, lead=LEAD_SECONDS, tracker_version="", created=""):
+    """The actor profile and its evaluation from one scripted take (load_capture). CalibrationError when the clip
+    does not split into the script's expressions."""
+    t = np.asarray(cap["times"], float)
+    c, neutral = neutral_scores(cap, lead)
+    lm = cap.get("landmarks")
+    if lm is not None and np.asarray(cap["valid"]).any() and not np.isnan(lm[np.asarray(cap["valid"], bool)]).all():
+        act = activity(lm, cap["size"], cap["valid"], neutral)
+    else:
+        act = score_activity(c)
+    pairs = match_script(t, segment(t, act, lead))
+    if not created:
+        import datetime
+        created = datetime.date.today().isoformat()
+    profile = learn(cap["names"], c, act, pairs, label=label, tracker_version=tracker_version,
+                    head_pitch_deg=head_pitch_deg(cap.get("mats"), cap["valid"]), created=created)
+    ev = evaluate(profile, cap["names"], c, act, pairs)
+    profile["report"] = {"before": ev["before"], "after": ev["after"],
+                         "segments": [[round(float(t[a]), 2), round(float(t[b - 1]), 2)] for _, (a, b) in pairs]}
+    return profile, ev

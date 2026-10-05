@@ -212,6 +212,32 @@ def test_names_match_faceforge():
     assert all(f'"{n}"' in src for n in v.ARKIT_52), "ARKIT_52 drifted from presets.py"
 
 
+def test_capture_file_round_trip():
+    """--capture: the per-frame raw scores, landmarks and head matrices for the actor calibration (spec 005)."""
+    try:
+        import numpy as np
+    except ImportError:
+        print("  (numpy missing: skipping the capture file)")
+        return
+    sys.path.insert(0, str(FF / "capture"))
+    import calib
+    lm = np.full((478, 3), 0.25, np.float32)
+    raw = [{"jawOpen": 0.5, "eyeBlinkLeft": 0.1}, None, {"jawOpen": 0.7}]
+    marks = [lm, None, lm + 0.01]
+    mats = [[float(i) for i in range(16)], None, None]
+    with tempfile.TemporaryDirectory() as d:
+        p = Path(d) / "take.capture.npz"
+        v.write_capture(p, [0.0, 0.033, 0.067], raw, marks, mats, (640, 480))
+        cap = calib.load_capture(p)
+    assert cap["names"] == v.ARKIT_52 and cap["size"] == (640, 480)
+    assert cap["valid"].tolist() == [True, False, True]
+    assert cap["scores"].shape == (3, 52) and abs(cap["scores"][0, v.ARKIT_52.index("jawOpen")] - 0.5) < 1e-6
+    assert cap["scores"][2, v.ARKIT_52.index("tongueOut")] == 0.0 and np.isnan(cap["scores"][1]).all()
+    assert cap["landmarks"].shape == (3, 478, 3) and np.isnan(cap["landmarks"][1]).all()
+    assert cap["mats"].shape == (3, 4, 4) and cap["mats"][0, 1, 2] == 6 and np.isnan(cap["mats"][2]).all()
+    assert v.build_parser().parse_args(["x.mp4", "-o", "x.csv", "--capture", "x.capture.npz"]).capture == "x.capture.npz"
+
+
 if __name__ == "__main__":
     tests = [f for k, f in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

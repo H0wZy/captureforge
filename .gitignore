@@ -14,3 +14,5 @@ __pycache__/
 .claude/*
 !.claude/skills/
 captureforge/licenses/
+*.capture.npz
+*.faceprofile.json

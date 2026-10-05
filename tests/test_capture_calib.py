@@ -265,6 +265,52 @@ def test_report_lines():
     assert "mirrored" not in text.lower() or "not mirrored" in text.lower()
 
 
+# ---- the whole calibration from a capture ----------------------------------------------------------------------
+
+def synthetic_landmarks(t, seed=0):
+    """Face points that move in every scripted expression (also those the scores miss, like the cheek puff)."""
+    import calib
+    import numpy as np
+    rng = np.random.default_rng(seed)
+    base = rng.uniform(0.3, 0.7, (478, 3))
+    base[:, 2] = rng.uniform(-0.05, 0.05, 478)
+    moving = np.setdiff1d(np.arange(468), calib.ALIGN_IDX)
+    lm = np.repeat(base[None], len(t), axis=0)
+    for k in range(18):
+        s0 = 3.0 + 2.0 * k
+        env = np.clip(np.minimum(t - s0, s0 + 1.0 - t) / 0.15, 0, 1)
+        pts = rng.choice(moving, 40, replace=False)
+        lm[:, pts, 1] += 0.03 * env[:, None]
+    return lm
+
+
+def test_calibrate_a_capture():
+    """From raw scores (neutral not yet subtracted) and landmarks to a profile and its report."""
+    import calib
+    import numpy as np
+    names, t, c, _ = synthetic_take(seed=0)
+    offset = np.zeros(len(names))
+    offset[names.index("eyeLookDownLeft")] = 0.2  # a resting bias the neutral calibration removes
+    cap = {"times": t, "valid": np.ones(len(t), bool), "scores": np.clip(c + offset, 0, 1), "names": names,
+           "landmarks": synthetic_landmarks(t), "size": (640, 480), "mats": None}
+    prof, ev = calib.calibrate(cap, label="take one")
+    assert prof["label"] == "take one" and abs(prof["gains"]["eyeBlinkLeft"] - 1 / 0.6) < 0.1
+    assert ev["after"]["hits"] >= 15 and prof["report"]["after"]["hits"] == ev["after"]["hits"]
+    assert len(prof["report"]["segments"]) == 18 and "cheekPuff" in prof["undetected"]
+    half = {k: (v[: len(t) // 2] if k in ("times", "valid", "scores", "landmarks") else v) for k, v in cap.items()}
+    expect_error(lambda: calib.calibrate(half, label="half"), "found", "18")
+
+
+def test_calibrate_without_landmarks_says_what_it_found():
+    """The score fallback cannot see expressions the tracker misses (cheek puff, sneer): a clear error, not a
+    wrong profile."""
+    import calib
+    import numpy as np
+    names, t, c, _ = synthetic_take(seed=0)
+    cap = {"times": t, "valid": np.ones(len(t), bool), "scores": c, "names": names, "landmarks": None,
+           "size": (640, 480), "mats": None}
+    expect_error(lambda: calib.calibrate(cap, label="x"), "found", "the script has 18")
+
 if __name__ == "__main__":
     try:
         import numpy  # noqa: F401
