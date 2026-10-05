@@ -140,3 +140,149 @@ def match_script(times, segments, script=SCRIPT):
         raise CalibrationError(f"found {len(segments)} expressions, the script has {len(script)}: {found}. "
                                "Record the clip again with a clear pause of neutral face between expressions.")
     return list(zip(script, segments))
+
+
+# ---- learning and applying -------------------------------------------------------------------------------------
+
+FORMAT, VERSION = "faceforge-actor-profile", 1
+GAIN_MIN, GAIN_MAX = 1.0, 4.0
+DETECT = 0.1        # a target whose peak stays under this is "not detected for this actor"
+MIN_LEAK = 0.05     # smaller cross-talk entries are noise and are dropped
+HOLD = 0.5          # hold frames: activity at least half the segment's peak
+
+
+def mirror_name(name):
+    """'eyeBlinkLeft' -> 'eyeBlinkRight', 'mouthLeft' -> 'mouthRight'; names without a side are unchanged."""
+    if name.endswith("Left"):
+        return name[:-4] + "Right"
+    if name.endswith("Right"):
+        return name[:-5] + "Left"
+    return name
+
+
+def gain_for(peak):
+    """The gain that maps the actor's peak to 1.0, bounded to GAIN_MIN..GAIN_MAX."""
+    return float(min(GAIN_MAX, max(GAIN_MIN, 1.0 / peak))) if peak > 0 else GAIN_MAX
+
+
+def _swap(names, rows):
+    col = {n: i for i, n in enumerate(names)}
+    return rows[:, [col.get(mirror_name(n), i) for i, n in enumerate(names)]]
+
+
+def _holds(act, pairs):
+    out = []
+    for entry, (a, b) in pairs:
+        seg = np.asarray(act[a:b], float)
+        out.append((entry, a + np.flatnonzero(seg >= HOLD * seg.max())))
+    return out
+
+
+def _is_mirrored(col, c, holds):
+    """True when the one-sided expressions (left wink, left smile) read on the right side."""
+    votes = []
+    for entry, idx in holds:
+        if entry["id"] in ("winkLeft", "smileLeft"):
+            k = entry["targets"][0]
+            if k in col and mirror_name(k) in col:
+                votes.append(c[idx, col[mirror_name(k)]].mean() > c[idx, col[k]].mean())
+    return bool(votes) and all(votes)
+
+
+def _nnls(x, y, iterations=500):
+    """min |x w - y|^2 with w >= 0 by projected gradient (small problems only)."""
+    g = x.T @ x
+    lip = float(np.linalg.eigvalsh(g)[-1]) if g.size else 0.0
+    w = np.zeros(x.shape[1])
+    if lip <= 0:
+        return w
+    xy = x.T @ y
+    for _ in range(iterations):
+        w = np.maximum(0.0, w - (g @ w - xy) / lip)
+    return w
+
+
+def _matrix(profile, names):
+    """Cross-talk matrix L (K x K, L[j, i] = leak of source i into key j) and gains, for these column names."""
+    col = {n: i for i, n in enumerate(names)}
+    leak = np.zeros((len(names), len(names)))
+    for j, row in profile["crosstalk"].items():
+        for i, w in row.items():
+            if j in col and i in col:
+                leak[col[j], col[i]] = w
+    gains = np.array([profile["gains"].get(n, 1.0) for n in names])
+    return leak, gains
+
+
+def learn(names, c, act, pairs, label="", tracker="mediapipe", tracker_version="", head_pitch_deg=None, created=""):
+    """The actor profile from one scripted take. names: score columns; c: (n, K) neutral-subtracted scores clamped
+    to 0..1 (the video path's calibration without smoothing); act: per-frame activity; pairs: match_script()."""
+    names = list(names)
+    col = {n: i for i, n in enumerate(names)}
+    c = np.asarray(c, float)
+    holds = _holds(act, pairs)
+    mirrored = _is_mirrored(col, c, holds)
+    if mirrored:
+        c = _swap(names, c)
+    crosstalk = {}
+    for j, name in enumerate(names):
+        segs = [(e, idx) for e, idx in holds if name not in e["targets"]]
+        frames = np.concatenate([idx for _, idx in segs]) if segs else np.array([], int)
+        sources = sorted({k for e, _ in segs for k in e["targets"] if k in col and k != name}, key=col.get)
+        if not len(frames) or not sources or c[frames, j].max() < 2 * MIN_LEAK:
+            continue
+        w = _nnls(c[frames][:, [col[s] for s in sources]], c[frames, j])
+        row = {s: round(float(v), 4) for s, v in zip(sources, w) if v >= MIN_LEAK}
+        if row:
+            crosstalk[name] = row
+    profile = {"format": FORMAT, "version": VERSION, "label": label, "tracker": tracker,
+               "tracker_version": tracker_version, "created": created, "mirrored": mirrored,
+               "gains": {n: 1.0 for n in names}, "crosstalk": crosstalk, "undetected": [],
+               "head_pitch_deg": head_pitch_deg}
+    leak, _ = _matrix(profile, names)
+    d = np.clip(c - c @ leak.T, 0.0, None)
+    peaks = {}
+    for entry, idx in holds:
+        for k in entry["targets"]:
+            if k in col:
+                peaks[k] = max(peaks.get(k, 0.0), float(np.percentile(d[idx, col[k]], 90)))
+    for k, peak in peaks.items():
+        if peak < DETECT:
+            profile["undetected"].append(k)
+        else:
+            profile["gains"][k] = round(gain_for(peak), 4)
+    return profile
+
+
+def apply(profile, names, rows):
+    """Corrected scores: clamp(gain * (c - L c), 0, 1), after the left-right swap of a mirrored profile. No profile:
+    a copy of rows. Columns the profile does not know pass through with gain 1 and no cross-talk."""
+    rows = np.array(rows, dtype=float)
+    if profile is None:
+        return rows
+    names = list(names)
+    if profile.get("mirrored"):
+        rows = _swap(names, rows)
+    leak, gains = _matrix(profile, names)
+    return np.clip(gains * np.clip(rows - rows @ leak.T, 0.0, None), 0.0, 1.0)
+
+
+def save_profile(profile, path):
+    import json
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(profile, f, indent=1, sort_keys=True)
+
+
+def load_profile(path):
+    """Read and check an actor profile. CalibrationError on another file type or version."""
+    import json
+    try:
+        with open(path, encoding="utf-8") as f:
+            profile = json.load(f)
+    except (OSError, ValueError) as e:
+        raise CalibrationError(f"cannot read the actor profile {path}: {e}") from e
+    if not isinstance(profile, dict) or profile.get("format") != FORMAT:
+        raise CalibrationError(f"{path} is not a FaceForge actor profile")
+    if profile.get("version") != VERSION:
+        raise CalibrationError(f"{path}: actor profile version {profile.get('version')}, this FaceForge reads {VERSION}")
+    return profile
