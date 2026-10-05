@@ -23,7 +23,7 @@ model card is read.
 
 ## License status (Constitution V)
 
-- **Software**: `mediapipe` and `opencv-python` are Apache-2.0, GPL-3.0-compatible, and run only in the helper process.
+- **Software**: `mediapipe` and `opencv-contrib-python` are Apache-2.0, GPL-3.0-compatible, and run only in the helper process; the pinned versions and the other packages are listed in `THIRD_PARTY_NOTICES.md` and `captureforge/helper-requirements.txt`.
 - **Model files**: all MediaPipe weights used here are Apache-2.0. Verified 2026-10-04 on the Google model cards, whose
   "Licensed under" field reads "Apache License, Version 2.0" for each of them: pose landmarker lite/full/heavy
   ([BlazePose GHUM 3D](https://storage.googleapis.com/mediapipe-assets/Model%20Card%20BlazePose%20GHUM%203D.pdf)),

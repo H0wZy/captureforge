@@ -11,7 +11,16 @@ GPL-3.0. Checked 2026-10-04; details in `docs/BODYFORGE-MODELS.md`.
 | Component | License | Source |
 |---|---|---|
 | `mediapipe` | Apache-2.0 | <https://github.com/google-ai-edge/mediapipe> |
-| `opencv-python` | Apache-2.0 (the wheel also bundles third-party libraries under their own licenses, see the package) | <https://github.com/opencv/opencv-python> |
+| `opencv-contrib-python` (required by `mediapipe`; the BodyForge installer of v0.1 installed `opencv-python`, same license) | Apache-2.0 (the wheel also bundles third-party libraries under their own licenses, see the package) | <https://github.com/opencv/opencv-python> |
+| `numpy` | BSD-3-Clause (the wheel also bundles code under 0BSD and MIT) | <https://numpy.org> |
+| `cv2-enumerate-cameras` (camera names in the live capture list) | MIT | <https://github.com/lukehugh/cv2_enumerate_cameras> |
+
+Pulled in by `mediapipe` and installed with it (all GPL-3.0 compatible, checked on PyPI 2026-10-05): `matplotlib`
+(Matplotlib license, PSF-based), `pillow` (MIT-CMU), `fonttools` (MIT), `contourpy` (BSD-3-Clause), `kiwisolver`
+(BSD-3-Clause), `cycler` (BSD-3-Clause), `pyparsing` (MIT), `python-dateutil` (Apache-2.0 or BSD-3-Clause), `six`
+(MIT), `packaging` (Apache-2.0 or BSD-2-Clause), `absl-py` (Apache-2.0), `flatbuffers` (Apache-2.0), `sounddevice`
+(MIT, bundles PortAudio, MIT), `cffi` (MIT), `pycparser` (BSD-3-Clause), `certifi` (MPL-2.0). The exact versions are
+pinned in `captureforge/helper-requirements.txt`.
 
 ## Models (downloaded by the user; the face model is also bundled in the release zip)
 

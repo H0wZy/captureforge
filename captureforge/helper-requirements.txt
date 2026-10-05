@@ -1,0 +1,9 @@
+# Lock file of the helper environment (FaceForge video and live capture, BodyForge). The add-on installs it with
+#   python -m pip install --only-binary=:all: -r helper-requirements.txt
+# into a private venv, after the user confirms (captureforge/face/capture/setup.py). Checked on PyPI 2026-10-05.
+# mediapipe needs opencv-contrib-python; do not add opencv-python as well (two packages would own the same cv2).
+# numpy 2.4.x is the last line that still supports Python 3.11 (Blender 4.4); it also has Python 3.13 wheels.
+mediapipe==1.0.1
+opencv-contrib-python==5.0.0.93
+numpy==2.4.6
+cv2-enumerate-cameras==1.4.0

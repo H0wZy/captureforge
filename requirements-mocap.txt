@@ -1,2 +1,2 @@
-mediapipe
-opencv-python
+# The helper environment's pinned packages live in the add-on (so the installer inside Blender can read them).
+-r captureforge/helper-requirements.txt
