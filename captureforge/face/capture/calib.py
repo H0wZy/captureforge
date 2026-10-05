@@ -149,6 +149,7 @@ GAIN_MIN, GAIN_MAX = 1.0, 4.0
 DETECT = 0.1        # a target whose peak stays under this is "not detected for this actor"
 MIN_LEAK = 0.05     # smaller cross-talk entries are noise and are dropped
 HOLD = 0.5          # hold frames: activity at least half the segment's peak
+VISIBLE = 0.05      # weights up to this are invisible on a character: the leak and neutral numbers ignore them
 
 
 def mirror_name(name):
@@ -286,3 +287,66 @@ def load_profile(path):
     if profile.get("version") != VERSION:
         raise CalibrationError(f"{path}: actor profile version {profile.get('version')}, this FaceForge reads {VERSION}")
     return profile
+
+
+# ---- report and evaluation -------------------------------------------------------------------------------------
+
+def _scores(names, w, holds, gaps, undetected):
+    """Per-expression and per-take numbers of score table w (spec 005, SC-001 to SC-004)."""
+    col = {n: i for i, n in enumerate(names)}
+    vis = np.clip(w - VISIBLE, 0.0, None)
+    rows = []
+    for entry, idx in holds:
+        tg = [col[k] for k in entry["targets"] if k in col]
+        mean = w[idx].mean(axis=0)
+        other = [i for i in range(len(names)) if i not in tg]
+        rows.append({"id": entry["id"], "en": entry["en"],
+                     "peak": float(np.mean([np.percentile(w[idx, i], 90) for i in tg])) if tg else 0.0,
+                     "leak": float(vis[idx].mean(axis=0)[other].sum()), "hit": bool(tg) and int(np.argmax(mean)) in tg,
+                     "undetected": all(k in undetected for k in entry["targets"])})
+    detectable = [r["peak"] for r in rows if not r["undetected"]]
+    return rows, {"hits": sum(r["hit"] for r in rows), "median_peak": float(np.median(detectable)) if detectable else 0.0,
+                  "leak": float(np.mean([r["leak"] for r in rows])),
+                  "neutral": float(vis[gaps].sum(axis=1).mean()) if len(gaps) else 0.0}
+
+
+def evaluate(profile, names, c, act, pairs):
+    """Before and after numbers of a take (the held-out take for the gate, the calibration take for the report):
+    {"before": totals, "after": totals, "expressions": [per expression rows]}. Totals: hits (a target key is the
+    strongest), median_peak (of the detectable expressions), leak (mean visible weight, above VISIBLE, on non-target
+    keys), neutral (mean visible weight on the frames outside every expression)."""
+    names = list(names)
+    c = np.asarray(c, float)
+    holds = _holds(act, pairs)
+    inside = np.zeros(len(c), bool)
+    for _, (a, b) in pairs:
+        inside[max(0, a - 3):b + 3] = True
+    gaps = np.flatnonzero(~inside)
+    undetected = set(profile.get("undetected", ())) if profile else set()
+    base = _swap(names, c) if profile and profile.get("mirrored") else c
+    before_rows, before = _scores(names, base, holds, gaps, undetected)
+    after_rows, after = _scores(names, apply(profile, names, c), holds, gaps, undetected)
+    expressions = [{"id": b["id"], "en": b["en"], "peak_before": b["peak"], "peak_after": a["peak"],
+                    "leak_before": b["leak"], "leak_after": a["leak"], "hit_before": b["hit"], "hit_after": a["hit"],
+                    "undetected": b["undetected"]} for b, a in zip(before_rows, after_rows)]
+    return {"before": before, "after": after, "expressions": expressions}
+
+
+def report_lines(profile, ev):
+    """Plain text lines for the panel and the operator report."""
+    b, a = ev["before"], ev["after"]
+    n = len(ev["expressions"])
+    lines = [f"Actor profile '{profile.get('label', '')}': "
+             + ("left and right were mirrored (corrected)" if profile.get("mirrored") else "not mirrored"),
+             f"Target key strongest: {b['hits']} of {n} before, {a['hits']} after",
+             f"Median target peak: {b['median_peak']:.2f} before, {a['median_peak']:.2f} after",
+             f"Weight on other keys: {b['leak']:.2f} before, {a['leak']:.2f} after",
+             f"Weight on a neutral face: {b['neutral']:.2f} before, {a['neutral']:.2f} after"]
+    if profile.get("head_pitch_deg") is not None:
+        lines.append(f"Mean head pitch during calibration: {profile['head_pitch_deg']:+.0f} degrees")
+    for r in ev["expressions"]:
+        state = "not detected" if r["undetected"] else f"{r['peak_before']:.2f} -> {r['peak_after']:.2f}"
+        lines.append(f"  {r['en']}: {state}; others {r['leak_before']:.2f} -> {r['leak_after']:.2f}")
+    if profile.get("undetected"):
+        lines.append("Not detected for this actor (kept as tracked): " + ", ".join(profile["undetected"]))
+    return lines

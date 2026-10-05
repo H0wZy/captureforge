@@ -12,7 +12,7 @@
 - [x] T002 [US1] Implement `SCRIPT`, `activity`, `segment` in `captureforge/face/capture/calib.py`
 - [x] T003 [P] [US1] Tests: `learn` on synthetic takes made from known gains and cross-talk recovers them (gains within 5 %, cross-talk within 0.05), bounds 1.0 to 4.0, undetected keys, mirror detection and swap; `apply` with no profile is the identity, clamps to 0..1, skips absent columns
 - [x] T004 [US1] Implement `learn`, `apply`, profile save and load (format and version checked) in `calib.py`
-- [ ] T005 [P] [US3] Tests then code: `report` (per expression before and after) and `evaluate` (SC-001 to SC-004 numbers on a held-out take)
+- [x] T005 [P] [US3] Tests then code: `report` (per expression before and after) and `evaluate` (SC-001 to SC-004 numbers on a held-out take)
 
 ## Phase 2: Capture file (US1)
 

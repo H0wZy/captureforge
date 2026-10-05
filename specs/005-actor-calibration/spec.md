@@ -172,8 +172,8 @@ compared with the uncorrected scores of the same take.
 
 - **SC-001**: In at least 15 of the 18 scripted expressions a target key is the strongest key with the profile (the uncorrected scores managed 7 of 15 comparable windows on the maintainer's unscripted clip).
 - **SC-002**: The median peak of the target keys over the detectable expressions is at least 0.85 with the profile (blinks peaked at about 0.6 without it).
-- **SC-003**: The weight on keys that are not part of the expression drops by at least 50 % on average.
-- **SC-004**: The total weight on neutral stretches does not grow by more than 0.05 (the correction must not create motion on a still face).
+- **SC-003**: The visible weight (above 0.05, which no character shows) on keys that are not part of the expression drops by at least 50 % on average.
+- **SC-004**: The total visible weight on neutral stretches does not grow by more than 0.05 (the correction must not create motion on a still face).
 - **SC-005**: A user who has never calibrated finishes the recording and the calibration in under 5 minutes, following only the panel text.
 - **SC-006** (go/no-go, measured first on two scripted takes of the maintainer): SC-001 to SC-004 are met; if not, the feature does not ship and the finding goes into the research note, as in spec 003.
 

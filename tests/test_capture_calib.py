@@ -235,6 +235,36 @@ def test_profile_file_round_trip():
         expect_error(lambda: calib.load_profile(path), "profile")
 
 
+# ---- report and evaluation -------------------------------------------------------------------------------------
+
+def test_evaluate_on_a_held_out_take():
+    import calib
+    prof, *_ = learned(seed=0)
+    names, t, c, act = synthetic_take(seed=3)
+    pairs = calib.match_script(t, calib.segment(t, act))
+    ev = calib.evaluate(prof, names, c, act, pairs)
+    b, a = ev["before"], ev["after"]
+    assert len(ev["expressions"]) == 18
+    assert a["hits"] >= 15 and a["hits"] >= b["hits"], (b["hits"], a["hits"])
+    assert a["median_peak"] >= 0.85 > b["median_peak"] - 0.3, (b["median_peak"], a["median_peak"])
+    assert a["leak"] <= 0.5 * b["leak"], (b["leak"], a["leak"])
+    assert a["neutral"] <= b["neutral"] + 0.05
+    row = next(r for r in ev["expressions"] if r["id"] == "blink")
+    assert row["peak_before"] < 0.7 and row["peak_after"] > 0.9 and row["leak_after"] < row["leak_before"]
+    assert next(r for r in ev["expressions"] if r["id"] == "cheekPuff")["undetected"]
+
+
+def test_report_lines():
+    import calib
+    prof, names, t, c, act = learned()
+    ev = calib.evaluate(prof, names, c, act, calib.match_script(t, calib.segment(t, act)))
+    lines = calib.report_lines(prof, ev)
+    text = "\n".join(lines)
+    assert "Blink both eyes" in text and "not detected" in text and "cheekPuff" in text
+    assert any(l.startswith("Target key strongest") for l in lines)
+    assert "mirrored" not in text.lower() or "not mirrored" in text.lower()
+
+
 if __name__ == "__main__":
     try:
         import numpy  # noqa: F401
