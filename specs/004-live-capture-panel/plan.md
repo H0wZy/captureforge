@@ -17,7 +17,7 @@ consent by Blender's own Python, so a machine with no Python works; after setup 
 - Blender 4.4 LTS (Python 3.11) and 5.2 (Python 3.13); helper venv created by Blender's interpreter; MediaPipe, OpenCV and numpy from pinned wheels (MediaPipe wheels are `py3-none`, see research).
 - Helper: Python, MediaPipe Face Landmarker in LIVE_STREAM mode, OpenCV for the camera; stdlib `socket`, `struct`, `json` for the protocol. Optional `cv2-enumerate-cameras` (MIT) for camera names.
 - Blender side: `socket` non-blocking in a modal timer, `gpu` module for the overlay, numpy for the buffer.
-- Platforms: Windows 10/11 (x86-64, ARM64), macOS 12+ on Apple Silicon, Linux x86-64 and aarch64; macOS Intel has no current MediaPipe wheel and is documented unsupported.
+- Platforms: Windows 10/11 (x86-64, ARM64), macOS 12+ on Apple Silicon, Linux x86-64 and aarch64; Intel macOS is officially unsupported (no current MediaPipe wheel).
 - Performance goals: SC-002 (150 ms p95, UI at 30 fps, preview at 15 fps).
 - Constraints: local only, no telemetry, opt-in face data on disk, no paid component.
 

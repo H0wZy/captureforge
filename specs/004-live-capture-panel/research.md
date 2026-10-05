@@ -35,7 +35,7 @@ still lacks).
 - Blender 5.2's bundled interpreter (3.13.13) imports `venv` and `ensurepip` and creates a venv with `pip`, so no system
   Python is needed to create the helper environment.
 - Building MediaPipe from source: Bazel, a C++ toolchain and OpenCV development files; long and fragile. Only a last
-  resort for a platform with no wheel (macOS Intel), documented, not automated. Not attempted here.
+  resort for a platform with no wheel (Intel macOS, which is officially unsupported), documented, not automated. Not attempted here.
 
 ## Preview options
 
