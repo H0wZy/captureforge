@@ -302,6 +302,10 @@ Ideias da v1.1:
   foto ou de uma imagem de IA.
 - Mapas automáticos de rugas e tensão por shape.
 - Transferência de expressões entre personagens.
+- Pesos ajustados às shape keys do próprio personagem (spec 003): em espera. Uma medição mostrou que ajustar os
+  landmarks rastreados deixa os pesos piores que os scores do próprio MediaPipe em cabeças estilizadas de teste,
+  porque os landmarks entre as feições visíveis não acompanham a pele com fidelidade suficiente. Detalhes:
+  `specs/003-character-fitted-weights/research.md`.
 
 ### A família Forge
 
