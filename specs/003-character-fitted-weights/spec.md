@@ -8,6 +8,24 @@
 
 **Input**: User description: "Instead of keying the generic MediaPipe blendshape scores onto the character, solve, per video frame, the weights of the character's own ARKit shape keys that best reproduce the tracked face landmarks, so the expression 'sticks' to a stylized face and not to the average human one." Research: `docs/research/keentools-facetracker.md`, idea 5 (character-fitted weights); the spec 002 head pose is not a prerequisite.
 
+## Clarifications
+
+### Session 2026-10-05
+
+Answered with the recommended default; no user was blocked. The maintainer should confirm or override.
+
+- Q: What does weight 1.0 mean on the character: the actor's absolute motion, or the actor's own range? -> A: absolute. The actor's landmark displacement divided by the actor's outer eye-corner distance is matched to the character's key displacements divided by the character's outer eye-corner distance, so a key at 1.0 is whatever the artist baked as its full expression. A single `Expression gain` (default 1.0) scales the actor's displacement for cartoony characters. No per-actor range calibration in v1 (it would need a calibration-video protocol); noted as a limit, and the per-key gains of the importer stay available.
+- Q: Which landmarks enter the solve? -> A: the 468 face-mesh points, not the 10 iris points (the head mesh's keys do not move the eyeballs, so eye-look keys stay generic). Equal weights, except depth (the noisiest MediaPipe axis) counts half. Both are constants in the code, not settings.
+- Q: How is head motion removed? -> A: each frame is aligned to the neutral face (the mean of the neutral window, as in the generic path) with a similarity transform (rotation, translation, uniform scale) computed on a fixed subset of points that do not move with expressions (forehead, temples, nose bridge). The index list is fixed in the plan from the public canonical face mesh and checked by a test that a synthetic jaw opening leaves the subset's alignment unchanged.
+- Q: Objective and solver? -> A: `|A w - b|^2 + l1 * sum(w) + l2 * |w - w_generic|^2`, 0 <= w <= 1, solved with FISTA (projected, fixed step from the Lipschitz constant, a fixed iteration count) for all frames at once with numpy. Starting values: the generic weights. `l1` and `l2` are exposed as `Sparsity` and `Generic prior` in an advanced fold, defaults tuned on synthetic data and one real clip in the plan (starting guess 0.02 and 0.1 in normalized units).
+- Q: Which keys count as observable? -> A: a key whose basis column has an L2 norm below 5 % of the median key norm moves no tracked point (eye look, tongue, an empty key) and keeps its generic score. The report names these keys.
+- Q: Keys that exist only as a symmetric pair (`eyeBlink` instead of `eyeBlinkLeft/Right`)? -> A: fitted as one column that moves both sides; its generic prior is the mean of the Left and Right generic scores; the report says so.
+- Q: Where do the character's neutral landmarks come from? -> A: the same front render and MediaPipe call as the auto rig fit, on the target with every key at 0, with the 478 points raycast onto the surface and kept as triangle plus barycentric coordinates, so a key's displacement at a point is the barycentric interpolation of the triangle's corner deltas. If MediaPipe finds no face in the render the fit stops with advice. No manual landmark editing in v1.
+- Q: What is stored and when? -> A: `<csv stem>.landmarks.npz` with `interface` (1), `times`, `valid`, `landmarks` (n, 478, 3) float32, `scores` (n, 52) float32 in ARKit order, `names`, `size`. The helper writes it only when asked (`--landmarks PATH`), and `Video to face` asks only when `Keep landmarks` is ticked (default off, because it is face data). About 6 KB per frame.
+- Q: What does the fit produce? -> A: the same kind of rows as the generic path: keyed through `mocap.apply_mocap` into `<target>_facemocap`, and written as `<csv stem>_fitted.csv` in the generic format (head pose columns copied unchanged when present). The frame mapping and smoothing are the existing ones.
+- Q: UI? -> A: a box `4d. Fit to character` in the FaceForge panel: landmark file, `Fit strength`, `Expression gain`, an advanced fold, `Fit to character`, `Delete landmark file`. The operators are `faceforge.fit_weights` and `faceforge.delete_landmarks`.
+- Q: Is this in scope for this change to implement? -> A: this branch stops at spec, plan and tasks. The estimate is about 700 lines of code plus tests and docs, and SC-004 needs a go/no-go measurement on a real clip first (task T001), so implementation is a separate session.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - A stylized character that follows the actor's face shape, not only the actor's scores (Priority: P1)
