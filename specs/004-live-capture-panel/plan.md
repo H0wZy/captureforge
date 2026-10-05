@@ -36,8 +36,10 @@ consent by Blender's own Python, so a machine with no Python works; after setup 
 | IX. Android and no-iPhone friendly | Pass | Any webcam or a phone used as a webcam; iOS and Android capture are future and optional. |
 | X. Semantic versioning | Pass | New interface (the local protocol, the capture file) gets an interface version; the manifest version moves at release. |
 
-**Needs the maintainer** (see spec, clarifications): (1) the constitution's wording on models, so CI can add the 3.6 MB
-face model to the release zip with a pinned checksum; (2) whether macOS Intel stays unsupported.
+**Decided by the maintainer 2026-10-05:** (1) the 3.6 MB face model is added to the release zip by CI with the pinned
+SHA-256, the Apache-2.0 text and an attribution note; the constitution was amended to v1.0.1 (PATCH, commit on this
+branch, still to be approved in review); (2) Intel macOS is officially unsupported, Windows, Linux and Apple Silicon
+macOS are supported.
 
 ## Project Structure
 
@@ -57,6 +59,7 @@ captureforge/face/capture/
 captureforge/face/ops.py, ui.py     operators (capture, stop, record, refresh cameras, install helper, import video, delete capture file) and the panel
 captureforge/blender_manifest.toml  camera permission
 requirements-mocap.txt              pinned versions
+licenses/Apache-2.0.txt             license text shipped in the release zip next to the bundled face model
 docs/TRACKER-CONTRACT.md            the contract (en), docs/pt-BR/CAPTURA-AO-VIVO.md (setup and failures, pt-BR)
 tests/test_capture_*.py             pure tests; tests/run_tests.py gets the Blender tests; tests/fake_camera support in the helper
 .github/workflows/ci.yml            OS matrix additions
@@ -149,17 +152,19 @@ and socket errors to the rest.
 
 ### Test matrix
 
-| Area | Linux | Windows | macOS (Apple Silicon) | How |
+| Area | Linux | Windows | macOS Apple Silicon (M1+) | How |
 |---|---|---|---|---|
 | Pure tests (protocol, post, errors, overlay projection, tracker contract grep) | CI | CI | CI | plain Python with numpy |
 | Blender suite, fake sender, bake, undo, head bone, lifecycle (helper killed, Blender-side stop) | CI 4.4 + 5.2 | CI 4.4 + 5.2 | CI 5.2 (4.4 if a runner build exists) | `run_tests.py` |
 | Helper env install from the pinned lock file, then the real helper on a synthetic video | CI | CI | CI | validates wheels and setup on each OS |
 | Fake camera end to end (helper `--source file`, TCP, Blender, bake, compare with the video path, SC-004) | CI | CI | CI | no hardware |
 | Error paths (no camera index, busy, corrupt model, helper exits, port busy, bad token) | CI | CI | CI | scripted |
-| Real camera, preview, latency p95 | manual | manual | manual | checklist below |
+| Real camera, preview, latency p95 | manual | manual | manual (Apple Silicon) | checklist below |
 | macOS camera permission prompt for a helper started by Blender | n/a | n/a | manual, first check | unverified assumption |
 | Offline after setup | CI (network off for the run step where the runner allows) | manual | manual | |
 | No-Python machine | CI container without system Python | manual | manual | Blender's own interpreter |
+
+Intel macOS is officially unsupported and is not in the matrix (no run, no CI job; the README says so).
 
 Manual checklist per OS: list cameras, capture 5 minutes, unplug the camera, kill Blender during capture and look for a
 leftover process and a lit camera, deny the permission, bake and compare with a video import, read the p95 latency

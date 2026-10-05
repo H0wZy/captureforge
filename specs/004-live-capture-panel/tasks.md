@@ -10,7 +10,7 @@
 
 - [ ] T001 Spike on real hardware, one machine per OS: camera, MediaPipe LIVE_STREAM, loopback TCP, a draw handler with a `GPUTexture` on Blender 4.4 and 5.2; measure p95 latency from frame capture to key update and the Blender UI frame rate. Go/no-go for SC-002; the numbers go into `research.md`
 - [ ] T002 Spike: macOS camera permission for a helper started by Blender (does the prompt appear, for which process); Linux `video` group message; Windows privacy toggle. Record in `research.md`
-- [ ] T003 Maintainer decisions recorded in the spec: bundle the face model through CI (constitution wording), macOS Intel unsupported
+- [x] T003 Maintainer decisions recorded (2026-10-05): the face model is bundled through CI (constitution v1.0.1, `docs/BODYFORGE-MODELS.md` and `THIRD_PARTY_NOTICES.md` updated), Intel macOS is officially unsupported (README en and pt-BR, spec test matrix)
 
 ## Phase 1: Tracker contract and shared post-processing (US2, US4, FR-004)
 
@@ -51,7 +51,7 @@
 ## Phase 6: CI matrix and the model in the zip (FR-016, FR-013)
 
 - [ ] T025 CI: pure and Blender suites on Ubuntu, Windows and macOS runners; a job per OS that installs the helper environment from the pinned lock file and runs the real helper on a synthetic video; a Linux job without a system Python
-- [ ] T026 CI release step: download the face model from the pinned URL, check the SHA-256, add it and the Apache-2.0 text to the zip (after T003); the add-on prefers the bundled model
+- [ ] T026 CI release step in `.github/workflows/ci.yml`: download `face_landmarker.task` from the pinned `float16/1` URL, check SHA-256 `64184e22...c9ff` (3,758,596 bytes), copy it with `licenses/Apache-2.0.txt` into the extension source before `extension build`, and fail the release on a mismatch; a test checks that the add-on finds the bundled model first and falls back to the installer's download; the repository still never holds the file
 
 ## Phase 7: Docs and checks
 
@@ -65,7 +65,7 @@ Anchor frames and refine (research idea 2); character-fitted weights (spec 003) 
 
 ## Dependencies
 
-T001 to T003 gate Phases 3 to 6. Phase 1 first (the shared steps and the contract), then Phase 2 (T008 to T013 in parallel where marked), then Phase 3 (T014 before T015, T015 before T016, T017 before T018), Phase 4 and Phase 5 can run in parallel after T016, Phase 6 after T022, docs and checks last. T026 waits for T003.
+T001 to T003 gate Phases 3 to 6. Phase 1 first (the shared steps and the contract), then Phase 2 (T008 to T013 in parallel where marked), then Phase 3 (T014 before T015, T015 before T016, T017 before T018), Phase 4 and Phase 5 can run in parallel after T016, Phase 6 after T022, docs and checks last. T026 depends on T022 (the model lookup order) and needs the constitution amendment approved.
 
 ## Estimate
 
