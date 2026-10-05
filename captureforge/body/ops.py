@@ -75,7 +75,7 @@ def apply_face(context, src, landmarks_path):
         return (f"The face is too small in this video ({landmarks.face_pixels(lm):.0f} px, at least "
                 f"{landmarks.MIN_FACE_PX} are needed): the face part is skipped. Film closer or in higher resolution.")
     python = _abs(prefs.pref(context, "python_path", "FACEFORGE_PYTHON") or os.environ.get("BODYFORGE_PYTHON", ""))
-    model = _abs(prefs.pref(context, "model_path", "FACEFORGE_MODEL"))
+    model = prefs.face_model(context)
     out = os.path.splitext(src)[0] + ".face.csv"
     face_video.run(python, model, src, out, crop=landmarks_path)
     face = context.scene.faceforge

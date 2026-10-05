@@ -1251,6 +1251,36 @@ def test_24_head_pose_operator():
         scene.frame_set(7)
 
 
+def test_25_bundled_face_model_first():
+    """The release zip's models/face_landmarker.task wins over the preference; without it the preference is used."""
+    from captureforge import prefs
+    bundled = os.path.join(os.path.dirname(captureforge.__file__), "models", "face_landmarker.task")
+    aside = bundled + ".aside"
+    had, had_dir = os.path.isfile(bundled), os.path.isdir(os.path.dirname(bundled))
+    saved = os.environ.get("FACEFORGE_MODEL")
+    mine = write_tmp("ff_mine.task", "x")
+    os.environ["FACEFORGE_MODEL"] = mine
+    try:
+        if had:
+            os.replace(bundled, aside)
+        assert prefs.face_model(bpy.context) == mine
+        os.makedirs(os.path.dirname(bundled), exist_ok=True)
+        with open(bundled, "w") as f:
+            f.write("x")
+        assert prefs.face_model(bpy.context) == bundled
+    finally:
+        if os.path.isfile(bundled):
+            os.remove(bundled)
+        if had:
+            os.replace(aside, bundled)
+        if not had_dir:
+            os.rmdir(os.path.dirname(bundled))
+        if saved is None:
+            os.environ.pop("FACEFORGE_MODEL", None)
+        else:
+            os.environ["FACEFORGE_MODEL"] = saved
+
+
 TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
 
 

@@ -5,6 +5,7 @@ import tempfile
 
 import bpy
 
+from ..prefs import face_model as _face_model
 from ..prefs import pref as _pref
 from . import autofit, bake, live, markers, mocap, presets, quality, sheet, split, video
 
@@ -218,7 +219,7 @@ class FACEFORGE_OT_video_to_face(_Op):
         src = bpy.path.abspath(s.video_path)
         out = os.path.splitext(src)[0] + "_faceforge.csv"
         python = bpy.path.abspath(_pref(context, "python_path", "FACEFORGE_PYTHON"))
-        model = bpy.path.abspath(_pref(context, "model_path", "FACEFORGE_MODEL"))
+        model = _face_model(context)
         info = video.run(python, model, src, out, s.video_smooth, s.video_neutral, s.video_gain)
         s.csv_path = out
         return f"{info}. {_import_csv(context, out)}"
@@ -239,7 +240,7 @@ class FACEFORGE_OT_auto_rig(_Op):
         head = context.object
         extras = [o for o in context.selected_objects if o.type == "MESH" and o != head]
         python = bpy.path.abspath(_pref(context, "python_path", "FACEFORGE_PYTHON"))
-        model = bpy.path.abspath(_pref(context, "model_path", "FACEFORGE_MODEL"))
+        model = _face_model(context)
         arm = autofit.fit(context.scene, head, extras, python, model, s.fit_mode, s.fit_size)
         return f"{arm.name}: {len(arm.data.bones)} bones"
 
@@ -256,7 +257,7 @@ class FACEFORGE_OT_live_start(bpy.types.Operator):
             command = None
             if s.live_launch:
                 python = bpy.path.abspath(_pref(context, "python_path", "FACEFORGE_PYTHON"))
-                model = bpy.path.abspath(_pref(context, "model_path", "FACEFORGE_MODEL"))
+                model = _face_model(context)
                 video.check_setup(python, model)
                 command = live.helper_command(python, model, s.live_port, s.live_camera, s.video_smooth,
                                               s.video_neutral, s.video_gain)

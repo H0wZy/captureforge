@@ -149,6 +149,17 @@ def test_model_lookup_order():
         assert s.find_model(str(addon), str(pref), str(venv)) == str(addon / "models" / "face_landmarker.task")
 
 
+def test_release_step_pins_the_same_model():
+    import re
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    pins = dict(re.findall(r"^\s*(MODEL_URL|MODEL_SHA256|MODEL_SIZE):\s*\"?([^\"\s]+)\"?\s*$", ci, re.M))
+    assert pins == {"MODEL_URL": s.MODEL["url"], "MODEL_SHA256": s.MODEL["sha256"],
+                    "MODEL_SIZE": str(s.MODEL["size"])}, pins
+    assert "captureforge/models/face_landmarker.task" in ci and "captureforge/licenses/Apache-2.0.txt" in ci
+    assert (ROOT / "licenses" / "Apache-2.0.txt").read_text(encoding="utf-8").lstrip().startswith("Apache License")
+    assert "models/" in (ROOT / ".gitignore").read_text(encoding="utf-8").split()  # never committed
+
+
 if __name__ == "__main__":
     tests = [f for k, f in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

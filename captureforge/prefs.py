@@ -19,6 +19,15 @@ def pref(context, name, env=""):
     return (getattr(addon.preferences, name, "") if addon else "") or (os.environ.get(env, "") if env else "")
 
 
+def face_model(context):
+    """The face model file: the copy the release zip carries (models/face_landmarker.task) first, else the
+    preference (or FACEFORGE_MODEL)."""
+    from .face.capture.setup import find_model
+    path = pref(context, "model_path", "FACEFORGE_MODEL")
+    path = bpy.path.abspath(path) if path else path
+    return find_model(os.path.dirname(os.path.abspath(__file__)), path, "") or path
+
+
 class CFPreferences(bpy.types.AddonPreferences):
     bl_idname = ADDON_ID
 

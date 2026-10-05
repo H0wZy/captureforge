@@ -52,7 +52,8 @@
 ## Phase 6: CI matrix and the model in the zip (FR-016, FR-013)
 
 - [ ] T025 CI: pure and Blender suites on Ubuntu, Windows and macOS runners; a job per OS that installs the helper environment from the pinned lock file and runs the real helper on a synthetic video; a Linux job without a system Python
-- [ ] T026 CI release step in `.github/workflows/ci.yml`: download `face_landmarker.task` from the pinned `float16/1` URL, check SHA-256 `64184e22...c9ff` (3,758,596 bytes), copy it with `licenses/Apache-2.0.txt` into the extension source before `extension build`, and fail the release on a mismatch; a test checks that the add-on finds the bundled model first and falls back to the installer's download; the repository still never holds the file
+- [x] T026 CI release step in `.github/workflows/ci.yml`: download `face_landmarker.task` from the pinned `float16/1` URL, check SHA-256 `64184e22...c9ff` (3,758,596 bytes), copy it with `licenses/Apache-2.0.txt` into the extension source before `extension build`, and fail the release on a mismatch; a test checks that the add-on finds the bundled model first and falls back to the installer's download; the repository still never holds the file
+  Done 2026-10-05 in the build job (so the workflow artifact equals the release zip): size and SHA-256 checked, `licenses/Apache-2.0.txt` committed at the root and copied in, the zip listing checked; the pins are the ones of `capture/setup.py` (a unit test compares them); `prefs.face_model` prefers the bundled file (Blender test 25). Simulated locally with Blender 5.2.1 (`extension validate` and `build` pass, the zip holds both files). Merging still needs the maintainer's approval of constitution v1.0.1
 
 ## Phase 7: Docs and checks
 
