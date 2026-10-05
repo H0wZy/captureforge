@@ -1,14 +1,19 @@
 """Face video -> generic mocap CSV for FaceForge (time in seconds + ARKit-named shape columns).
 
 Usage: python video_to_csv.py input.mp4 -o out.csv [--model face_landmarker.task]
-       [--smooth 0..1] [--neutral-seconds 2] [--gain 1.0] [--preview out_preview.mp4]
+       [--smooth 0..1] [--neutral-seconds 2] [--gain 1.0] [--preview out_preview.mp4] [--no-head-pose]
 
-The pure processing steps (hold_gaps, calibrate, smooth) need no third-party packages;
+Besides the shape columns the CSV gets the head pose: headRotX/Y/Z (radians, relative to the neutral head,
+Euler order Ry * Rx * Rz = yaw, pitch, roll in the head frame: X = the person's left, Y up, Z out of the face)
+and headPosX/Y/Z (centimeters, relative to the neutral position). Readers that only know shapes ignore them.
+
+The pure processing steps (hold_gaps, calibrate, smooth, head_pose) need no third-party packages;
 cv2/mediapipe are imported only when a video is actually processed.
 """
 
 import argparse
 import csv
+import math
 import sys
 from pathlib import Path
 
@@ -79,12 +84,80 @@ def smooth(rows, amount):
     return out
 
 
-def write_csv(path, names, times, rows):
+HEAD_COLUMNS = ["headRotX", "headRotY", "headRotZ", "headPosX", "headPosY", "headPosZ"]
+
+
+# ---- head pose: 3x3 rotations are lists of rows, 4x4 matrices are 16 floats, row-major ---------
+
+def orthonormalize(m):
+    """The rotation closest to the 3x3 matrix m (Gram-Schmidt on the columns): drops a uniform scale."""
+    cols = []
+    for j in range(3):
+        c = [m[0][j], m[1][j], m[2][j]]
+        for u in cols:
+            d = sum(a * b for a, b in zip(c, u))
+            c = [a - d * b for a, b in zip(c, u)]
+        n = math.sqrt(sum(a * a for a in c)) or 1.0
+        cols.append([a / n for a in c])
+    x, y = cols[0], cols[1]
+    cols[2] = [x[1] * y[2] - x[2] * y[1], x[2] * y[0] - x[0] * y[2], x[0] * y[1] - x[1] * y[0]]  # right-handed
+    return [[cols[j][i] for j in range(3)] for i in range(3)]
+
+
+def euler_to_matrix(x, y, z):
+    """R = Ry(y) * Rx(x) * Rz(z): yaw about Y, then pitch about X, then roll about Z (intrinsic)."""
+    cx, sx, cy, sy, cz, sz = math.cos(x), math.sin(x), math.cos(y), math.sin(y), math.cos(z), math.sin(z)
+    return [[cy * cz + sy * sx * sz, -cy * sz + sy * sx * cz, sy * cx],
+            [cx * sz, cx * cz, -sx],
+            [-sy * cz + cy * sx * sz, sy * sz + cy * sx * cz, cy * cx]]
+
+
+def matrix_to_euler(r):
+    """Inverse of euler_to_matrix: (x, y, z) radians, x in -90..90. At +-90 (gimbal lock) roll is set to 0."""
+    x = math.asin(max(-1.0, min(1.0, -r[1][2])))
+    if abs(r[1][2]) < 1.0 - 1e-9:
+        return x, math.atan2(r[0][2], r[2][2]), math.atan2(r[1][0], r[1][1])
+    return x, math.atan2(-r[2][0], r[0][0]), 0.0
+
+
+def unbreak(rows):
+    """Make per-frame angles continuous: shift each by a multiple of 2 pi so it is within pi of the previous one."""
+    out = []
+    for r in rows:
+        if out:
+            r = [a - 2 * math.pi * round((a - p) / (2 * math.pi)) for a, p in zip(r, out[-1])]
+        out.append(list(r))
+    return out
+
+
+def head_pose(mats, times, neutral_seconds, valid=None):
+    """Facial transformation matrices (16 floats each, no gaps: see hold_gaps) -> (rot, pos) rows.
+
+    rot: Euler angles of R_neutral^T * R_frame, continuous across frames; pos: translation minus the neutral one.
+    The neutral is the mean over the first neutral_seconds (valid frames only), like calibrate(); without such
+    frames it is the identity rotation and the origin."""
+    rots = [orthonormalize([[m[0], m[1], m[2]], [m[4], m[5], m[6]], [m[8], m[9], m[10]]]) for m in mats]
+    ts = [[m[3], m[7], m[11]] for m in mats]
+    idx = [i for i, t in enumerate(times)
+           if t - times[0] < neutral_seconds and (valid is None or valid[i])]
+    if idx:
+        mean = orthonormalize([[sum(rots[i][a][b] for i in idx) / len(idx) for b in range(3)] for a in range(3)])
+        t0 = [sum(ts[i][c] for i in idx) / len(idx) for c in range(3)]
+    else:
+        mean, t0 = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], [0.0, 0.0, 0.0]
+    rel = [[[sum(mean[k][a] * r[k][b] for k in range(3)) for b in range(3)] for a in range(3)] for r in rots]
+    return unbreak([list(matrix_to_euler(r)) for r in rel]), [[a - b for a, b in zip(t, t0)] for t in ts]
+
+
+def write_csv(path, names, times, rows, head_rot=None, head_pos=None):
+    """time + shape columns; with head_rot and head_pos (one [x, y, z] per frame) the six HEAD_COLUMNS follow."""
+    head = head_rot is not None and head_pos is not None
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
-        w.writerow(["time"] + names)
-        for t, r in zip(times, rows):
-            w.writerow([f"{t:.6f}"] + [f"{x:.5f}" for x in r])
+        w.writerow(["time"] + names + (HEAD_COLUMNS if head else []))
+        for i, (t, r) in enumerate(zip(times, rows)):
+            extra = list(head_rot[i]) + list(head_pos[i]) if head else []
+            w.writerow([f"{t:.6f}"] + [f"{x:.5f}" for x in list(r) + extra])
 
 
 # ---- video / MediaPipe ------------------------------------------------------------------------
@@ -107,8 +180,9 @@ def _import_deps():
 
 def detect(video, model, want_landmarks, boxes=None):
     """Run Face Landmarker over every frame (inside the per-frame normalized box when `boxes` is given).
-    Returns (times_s, rows, names, landmarks): rows[i] is None when no face; landmarks[i] is an
-    (N, 2) array of normalized points or None (only filled when want_landmarks)."""
+    Returns (times_s, rows, names, landmarks, mats): rows[i] is None when no face; landmarks[i] is an
+    (N, 2) array of normalized points or None (only filled when want_landmarks); mats[i] is the facial
+    transformation matrix as 16 row-major floats, or None."""
     cv2, np, mp, mp_python, vision = _import_deps()
     if not Path(model).is_file():
         _fail(f"model file not found: {model}\nDownload it (about 3.6 MB) from {MODEL_URL}")
@@ -119,8 +193,9 @@ def detect(video, model, want_landmarks, boxes=None):
 
     opts = vision.FaceLandmarkerOptions(
         base_options=mp_python.BaseOptions(model_asset_path=str(model)),
-        running_mode=vision.RunningMode.VIDEO, output_face_blendshapes=True, num_faces=1)
-    times, scores, marks, last_ms, i = [], [], [], -1.0, 0
+        running_mode=vision.RunningMode.VIDEO, output_face_blendshapes=True,
+        output_facial_transformation_matrixes=True, num_faces=1)
+    times, scores, marks, mats, last_ms, i = [], [], [], [], -1.0, 0
     with vision.FaceLandmarker.create_from_options(opts) as lm:
         while True:
             ok, frame = cap.read()
@@ -140,9 +215,12 @@ def detect(video, model, want_landmarks, boxes=None):
                 scores.append({c.category_name: c.score for c in res.face_blendshapes[0]})
                 marks.append(np.array([(p.x, p.y) for p in res.face_landmarks[0]], np.float32)
                              if want_landmarks else None)
+                mats.append([float(x) for x in np.asarray(res.facial_transformation_matrixes[0]).ravel()]
+                            if res.facial_transformation_matrixes else None)
             else:
                 scores.append(None)
                 marks.append(None)
+                mats.append(None)
             times.append(ms / 1000.0)
             i += 1
     cap.release()
@@ -154,7 +232,7 @@ def detect(video, model, want_landmarks, boxes=None):
     if unknown:
         print(f"warning: ignoring unexpected shapes: {unknown}", file=sys.stderr)
     rows = [None if r is None else [r.get(n, 0.0) for n in names] for r in scores]
-    return [t - times[0] for t in times], rows, names, marks
+    return [t - times[0] for t in times], rows, names, marks, mats
 
 
 def write_preview(video, out, rows, names, marks):
@@ -188,6 +266,7 @@ def build_parser():
     ap.add_argument("--neutral-seconds", type=float, default=2.0)
     ap.add_argument("--gain", type=float, default=1.0)
     ap.add_argument("--preview", help="write a debug video with landmarks and the top 5 shapes")
+    ap.add_argument("--no-head-pose", action="store_true", help="do not write the headRot/headPos columns")
     ap.add_argument("--crop", help="BodyForge landmarks.npz with a per-frame head box: track the face inside that "
                                    "crop (a face in a full-body frame is small)")
     return ap
@@ -236,7 +315,7 @@ def main():
             print("warning: --preview is not drawn with --crop", file=sys.stderr)
             a.preview = None
 
-    times, raw, names, marks = detect(a.video, a.model, bool(a.preview), boxes)
+    times, raw, names, marks, mats = detect(a.video, a.model, bool(a.preview), boxes)
     valid = [r is not None for r in raw]
     try:
         rows, missing = hold_gaps(raw)
@@ -245,8 +324,14 @@ def main():
     if missing:
         print(f"warning: {missing} of {len(raw)} frames had no face (held last value)", file=sys.stderr)
     rows = smooth(calibrate(rows, times, a.neutral_seconds, a.gain, valid), a.smooth)
-    write_csv(a.output, names, times, rows)
-    print(f"wrote {a.output}: {len(rows)} frames, {times[-1]:.2f} s, {len(names)} shapes")
+    rot = pos = None
+    if not a.no_head_pose and any(m is not None for m in mats):
+        mats, _ = hold_gaps(mats)
+        rot, pos = head_pose(mats, times, a.neutral_seconds, valid)
+        rot, pos = smooth(rot, a.smooth), smooth(pos, a.smooth)
+    write_csv(a.output, names, times, rows, rot, pos)
+    print(f"wrote {a.output}: {len(rows)} frames, {times[-1]:.2f} s, {len(names)} shapes"
+          + (", head pose" if rot else ""))
     if a.preview:
         write_preview(a.video, a.preview, rows, names, marks)
         print(f"wrote {a.preview}")
