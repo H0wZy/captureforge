@@ -287,6 +287,10 @@ v1.1 ideas:
 - Pose from a reference image: solve the rig so MediaPipe sees the same expression as a photo or an AI image.
 - Automatic wrinkle and tension maps per shape.
 - Expression transfer between characters.
+- Weights fitted to the character's own shape keys (spec 003): on hold. A measurement showed that fitting the
+  tracked landmarks makes the weights worse than MediaPipe's own scores on stylized test heads, because the
+  landmarks between the visible features do not follow the skin closely enough. Details:
+  `specs/003-character-fitted-weights/research.md`.
 
 ### The Forge family
 

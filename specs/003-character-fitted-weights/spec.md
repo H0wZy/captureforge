@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-05
 
-**Status**: Draft
+**Status**: On hold. The go/no-go measurement (T001) failed on a synthetic proxy; see [research.md](research.md)
 
 **Input**: User description: "Instead of keying the generic MediaPipe blendshape scores onto the character, solve, per video frame, the weights of the character's own ARKit shape keys that best reproduce the tracked face landmarks, so the expression 'sticks' to a stylized face and not to the average human one." Research: `docs/research/keentools-facetracker.md`, idea 5 (character-fitted weights); the spec 002 head pose is not a prerequisite.
 
