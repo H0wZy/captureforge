@@ -72,3 +72,17 @@ rig. The target of 150 ms p95 has margin only if the rig update stays cheap; the
 An Android phone could run MediaPipe on device (the same model, the Tasks API) and an iPhone could send its native
 ARKit 52 blendshapes and head pose; both would send the same CSV contract (or the capture file) to this panel. Not
 part of this spec.
+
+## Measured during implementation (2026-10-05)
+
+Linux x86-64 cloud container, CPU only, no camera; not a substitute for the hardware spike (T001).
+
+- The capture helper with the real tracker in LIVE_STREAM mode on a 22 s, 512 x 512 synthetic face video played as a
+  camera: 659 of 659 frames tracked; time from the frame's submission to its receipt in a loopback test client:
+  p50 37 ms, p95 40 ms (tracking plus protocol, without the Blender side and without camera latency).
+- Blender 5.2.1's bundled Python 3.13.13 created the helper venv from the pinned lock (`--only-binary=:all:`) in
+  about 20 s with a warm network, copied the face model after its SHA-256 check, and the helper self-test passed.
+  The lock also resolves on Python 3.11 (Blender 4.4's line) with a pip dry run.
+- `mediapipe` 1.0.1 depends on `opencv-contrib-python`; the old lock's `opencv-python` would have installed a second
+  `cv2`. The lock now pins contrib only. `numpy` 2.5 needs Python 3.12 or later, so the lock pins 2.4.6 for 4.4.
+- No camera device exists in the container, so `--list-cameras` returns an empty list there.

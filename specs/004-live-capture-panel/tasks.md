@@ -6,6 +6,14 @@
 
 **Format**: `[ID] [P?] [Story] Description`; `[P]` = different files, no dependency on an unfinished task. Paths relative to the repository root.
 
+## Status (2026-10-05)
+
+Done without a camera or the Blender UI: T004 to T013, T021, T022, T026 (pure tests run in CI's unit stage). Open:
+the hardware and permission spikes T001 and T002 (they gate Phases 3 to 6 for the parts that touch a camera); the
+Blender session, live drive and bake T014 to T018; the preview overlay T019 and T020; the panel and operators T023
+and T024; the OS matrix T025 (pure tests run on Ubuntu only so far); user docs T027; the manual checklist T028; the
+full check T029.
+
 ## Phase 0: Gates (throwaway spikes, not committed)
 
 - [ ] T001 Spike on real hardware, one machine per OS: camera, MediaPipe LIVE_STREAM, loopback TCP, a draw handler with a `GPUTexture` on Blender 4.4 and 5.2; measure p95 latency from frame capture to key update and the Blender UI frame rate. Go/no-go for SC-002; the numbers go into `research.md`
