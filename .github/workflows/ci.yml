@@ -28,6 +28,7 @@ jobs:
           python3 tests/test_webcam_stream.py
           python3 tests/test_capture_post.py
           python3 tests/test_capture_contract.py
+          python3 tests/test_capture_protocol.py
       # Pure body tests need numpy; installed here for the test run only (it is not a dependency of the add-on).
       - run: |
           python3 -m venv .venv-dev
