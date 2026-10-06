@@ -177,6 +177,15 @@ def import_csv(scene, targets, path, csv_fps=60.0, start_frame=1, mapping=None, 
 
 # ---- head pose -> pose bones --------------------------------------------------------------------
 
+def _fcurve(action, datablock, path, index, group):
+    """The F-Curve for path[index], in the channel group `group` where the API has one: Blender 4.4's
+    fcurve_ensure_for_datablock takes no group_name (5.x does), and the group is only cosmetic."""
+    if "group_name" in action.bl_rna.functions["fcurve_ensure_for_datablock"].parameters:
+        return action.fcurve_ensure_for_datablock(datablock, path, index=index, group_name=group)
+    return action.fcurve_ensure_for_datablock(datablock, path, index=index)
+
+
+
 def _pose_bone(arm, name):
     """The pose bone called name (case-insensitive) or None."""
     low = name.strip().lower()
@@ -260,7 +269,7 @@ def apply_head_pose(arm, head_bone, times, rot, pos=None, scene_fps=30.0, start_
     def key(bone, prop, columns):
         columns = np.array(columns)
         for c in range(columns.shape[1]):
-            fc = action.fcurve_ensure_for_datablock(arm, f'pose.bones["{bone}"].{prop}', index=c, group_name=bone)
+            fc = _fcurve(action, arm, f'pose.bones["{bone}"].{prop}', c, bone)
             fc.keyframe_points.clear()
             fc.keyframe_points.add(len(frames))
             fc.keyframe_points.foreach_set("co", np.column_stack([frames, columns[:, c]]).ravel().astype(np.float32))
