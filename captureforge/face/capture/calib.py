@@ -412,6 +412,6 @@ def calibrate(cap, label, lead=LEAD_SECONDS, tracker_version="", created=""):
     profile = learn(cap["names"], c, act, pairs, label=label, tracker_version=tracker_version,
                     head_pitch_deg=head_pitch_deg(cap.get("mats"), cap["valid"]), created=created)
     ev = evaluate(profile, cap["names"], c, act, pairs)
-    profile["report"] = {"before": ev["before"], "after": ev["after"],
+    profile["report"] = {"before": ev["before"], "after": ev["after"], "expressions": ev["expressions"],
                          "segments": [[round(float(t[a]), 2), round(float(t[b - 1]), 2)] for _, (a, b) in pairs]}
     return profile, ev

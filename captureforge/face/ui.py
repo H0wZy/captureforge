@@ -6,6 +6,7 @@ from bpy.props import (BoolProperty, CollectionProperty, EnumProperty, FloatProp
 
 from .. import prefs
 from . import live
+from .capture import calib
 
 
 # One sidebar tab for the whole suite: sibling modules (body, scan) put their panels in the same category.
@@ -104,6 +105,19 @@ class FFSettings(bpy.types.PropertyGroup):
                                  description="Seconds at the start used as the neutral face (0 = off)")
     video_gain: FloatProperty(name="Gain", default=1.0, min=0.0,
                               description="Multiplies every channel after the neutral is removed")
+    calib_video: StringProperty(name="Calibration video", subtype="FILE_PATH",
+                                description="Your recording of the calibration script")
+    calib_label: StringProperty(name="Label", default="actor",
+                                description="Name of the profile file (any nickname, it does not need a real name)")
+    calib_show_script: BoolProperty(name="Show the script", default=False)
+    actor_profile: StringProperty(name="Actor profile", subtype="FILE_PATH",
+                                  description="A .faceprofile.json made by Calibrate; empty = no correction "
+                                              "(Video to face and Live webcam use it when set)")
+    csv_apply_profile: BoolProperty(name="Apply actor profile", default=False,
+                                    description="Correct the CSV with the actor profile (only for FaceForge CSVs "
+                                                "made without one; not for Live Link Face)")
+    calib_report: CollectionProperty(type=FFReportRow)
+    calib_report_index: IntProperty()
     quality_collider: PointerProperty(name="Collider", type=bpy.types.Object, poll=_is_mesh,
                                       description="Closed mesh the keys must not poke into "
                                                   "(eyeball, teeth); empty = skip the check")
@@ -206,6 +220,7 @@ class FACEFORGE_PT_main(bpy.types.Panel):
             sub = row.row()
             sub.active = s.head_translate
             sub.prop(s, "head_translate_scale")
+        box.prop(s, "csv_apply_profile")
         box.operator("faceforge.import_csv")
 
         box = lay.box()
@@ -234,6 +249,23 @@ class FACEFORGE_PT_main(bpy.types.Panel):
             box.operator("faceforge.live_start", icon="PLAY")
         for line in live.SESSION.error.splitlines():
             box.label(text=line, icon="ERROR")
+
+        box = lay.box()
+        box.label(text="4d. Actor calibration (experimental)", icon="USER")
+        box.prop(s, "calib_show_script", icon="TRIA_DOWN" if s.calib_show_script else "TRIA_RIGHT")
+        if s.calib_show_script:
+            col = box.column(align=True)
+            col.label(text=f"Camera at eye level, whole face in view. {calib.LEAD_SECONDS:g} s neutral, then hold each")
+            col.label(text=f"for about {calib.HOLD_SECONDS:g} s with {calib.PAUSE_SECONDS:g} s of neutral in between:")
+            for n, entry in enumerate(calib.SCRIPT, 1):
+                col.label(text=f"{n:2d}. {entry['en']}")
+        box.prop(s, "calib_video")
+        box.prop(s, "calib_label")
+        box.operator("faceforge.calibrate", icon="REC")
+        box.prop(s, "actor_profile")
+        box.operator("faceforge.profile_report", icon="TEXT")
+        if len(s.calib_report):
+            box.template_list("FACEFORGE_UL_report", "calib", s, "calib_report", s, "calib_report_index", rows=4)
 
         box = lay.box()
         box.label(text="5. Quality inspector", icon="VIEWZOOM")

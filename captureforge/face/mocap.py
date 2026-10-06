@@ -154,10 +154,14 @@ def apply_mocap(obj, names, times, rows, scene_fps, start_frame=1, mapping=None)
     return [k for _, k in pairs], unmatched
 
 
-def import_csv(scene, targets, path, csv_fps=60.0, start_frame=1, mapping=None):
-    """Read a CSV and key it onto every target that has shape keys.
+def import_csv(scene, targets, path, csv_fps=60.0, start_frame=1, mapping=None, profile=None):
+    """Read a CSV and key it onto every target that has shape keys. profile: an actor profile (spec 005) that
+    corrects the rows first (for FaceForge CSVs made without one).
     Returns (matched_keys, unmatched_columns, row_count); unmatched = columns no target took."""
     names, times, rows = read_csv(path, csv_fps)
+    if profile is not None:
+        from .capture import calib
+        rows = calib.apply(profile, names, rows)
     fps = scene.render.fps / scene.render.fps_base
     matched, unmatched = set(), set(names)
     for obj in targets:

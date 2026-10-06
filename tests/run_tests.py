@@ -1281,6 +1281,105 @@ def test_25_bundled_face_model_first():
             os.environ["FACEFORGE_MODEL"] = saved
 
 
+CALIB_STUB = r"""import sys
+a = sys.argv
+sys.path.insert(0, %r)
+import numpy as np
+import test_capture_calib as T
+out = a[a.index("-o") + 1]
+open(%r, "w").write(" ".join(a))
+names, t, c, _ = T.synthetic_take(0)
+if "--capture" in a:
+    np.savez_compressed(a[a.index("--capture") + 1], interface=2, times=t, valid=np.ones(len(t), bool),
+                        landmarks=T.synthetic_landmarks(t).astype(np.float32), scores=c.astype(np.float32),
+                        names=np.array(names), size=np.array([640, 480]), mats=np.full((len(t), 4, 4), np.nan, np.float32))
+open(out, "w").write("time,jawOpen,eyeBlinkLeft\n0,0,0\n0.1,0.45,0.6\n")
+print("wrote " + out)
+"""
+
+
+def test_26_actor_calibration_operators():
+    """Spec 005: Calibrate writes a profile and its report (replace only when confirmed); Video to face passes the
+    profile to the helper; Import CSV applies it only when asked; no profile = today's behavior."""
+    import json
+    scene, head = S["scene"], S["head"]
+    tmp = tempfile.mkdtemp()
+    argv_file = os.path.join(tmp, "argv.txt")
+    stub = os.path.join(tmp, "calib_stub.py")
+    open(stub, "w").write(CALIB_STUB % (HERE, argv_file))
+    clip = os.path.join(tmp, "calibration.mp4")
+    open(clip, "w").close()
+    t = bake.make_target(head)
+    bake.ensure_basis(t)
+    for n in ("jawOpen", "eyeBlinkLeft"):
+        t.shape_key_add(name=n, from_mix=False).value = 0.0
+    saved = {k: os.environ.get(k) for k in ("FACEFORGE_PYTHON", "FACEFORGE_MODEL")}
+    os.environ["FACEFORGE_PYTHON"], os.environ["FACEFORGE_MODEL"] = blender_python(), S["model"]
+    old_script = video.SCRIPT
+    video.SCRIPT = stub
+    old_fps = scene.render.fps, scene.render.fps_base
+    scene.render.fps, scene.render.fps_base = 10, 1.0
+    captureforge.register()
+    try:
+        s = scene.faceforge
+        pair = s.pairs.add()
+        pair.source, pair.target = head, t
+        assert s.actor_profile == "" and s.csv_apply_profile is False
+        s.calib_video, s.calib_label = clip, "Test Actor"
+        assert bpy.ops.faceforge.calibrate() == {"FINISHED"}
+        path = bpy.path.abspath(s.actor_profile)
+        assert path == os.path.join(tmp, "Test_Actor.faceprofile.json") and os.path.isfile(path), path
+        prof = json.load(open(path))
+        assert abs(prof["gains"]["eyeBlinkLeft"] - 1 / 0.6) < 0.1 and "cheekPuff" in prof["undetected"]
+        assert len(s.calib_report) > 5 and any("Blink both eyes" in r.text for r in s.calib_report)
+        assert "--capture" in open(argv_file).read()
+        assert not [f for f in os.listdir(tmp) if f.endswith(".capture.npz")], "the capture file is not kept"
+        try:
+            bpy.ops.faceforge.calibrate()  # the label exists: not replaced without confirmation
+        except RuntimeError as e:
+            assert "already exists" in str(e), e
+        else:
+            raise AssertionError("expected a refusal")
+        assert bpy.ops.faceforge.calibrate(replace=True) == {"FINISHED"}
+        s.calib_report.clear()
+        assert bpy.ops.faceforge.profile_report() == {"FINISHED"} and len(s.calib_report) > 5
+        # Video to face hands the profile to the helper
+        s.video_path = clip
+        assert bpy.ops.faceforge.video_to_face() == {"FINISHED"}
+        argv = open(argv_file).read()
+        assert "--profile" in argv and path in argv and "--capture" not in argv
+        s.actor_profile = ""
+        assert bpy.ops.faceforge.video_to_face() == {"FINISHED"}
+        assert "--profile" not in open(argv_file).read()
+        # Import CSV: off by default, then on
+        s.actor_profile = path
+        csv_path = write_tmp("ff_calib.csv", "time,jawOpen,eyeBlinkLeft\n0,0,0\n0.1,0.45,0.6\n")
+        s.csv_path = csv_path
+        blink = t.data.shape_keys.key_blocks["eyeBlinkLeft"]
+        assert bpy.ops.faceforge.import_csv() == {"FINISHED"}
+        scene.frame_set(2)
+        assert abs(blink.value - 0.6) < 1e-4, blink.value
+        s.csv_apply_profile = True
+        assert bpy.ops.faceforge.import_csv() == {"FINISHED"}
+        scene.frame_set(2)
+        assert blink.value > 0.95, blink.value
+        assert live.helper_command("py", "m.task", 9876, profile=path)[-2:] == ["--profile", path]
+        assert "--profile" not in live.helper_command("py", "m.task", 9876)
+    finally:
+        s.pairs.clear()
+        captureforge.unregister()
+        video.SCRIPT = old_script
+        scene.render.fps, scene.render.fps_base = old_fps
+        for k, v in saved.items():
+            os.environ.pop(k, None)
+            if v is not None:
+                os.environ[k] = v
+        if t.data.shape_keys.animation_data:
+            t.data.shape_keys.animation_data_clear()
+        scene.frame_set(7)
+        bpy.data.objects.remove(t)
+
+
 TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
 
 

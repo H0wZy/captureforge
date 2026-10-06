@@ -31,7 +31,7 @@ measured.
 
 - [x] T008 [US2] Tests then code: `post.process(..., profile=None)` and `video_to_csv.py --profile` (no profile: byte-identical CSV, the existing golden test stays green)
 - [x] T009 [US2] Tests then code: the live capture stream applies the profile per frame (spec 004 helper `--profile`)
-- [ ] T010 [US1][US2][US3] Blender tests then code: settings (`actor_profile`, `csv_apply_profile`), `faceforge.calibrate` (video and label in, profile and report out, replace only after confirmation), `faceforge.profile_report`, the script text and the profile box in the panel; `Video to face` and `Import CSV` use the profile when set
+- [x] T010 [US1][US2][US3] Blender tests then code: settings (`actor_profile`, `csv_apply_profile`), `faceforge.calibrate` (video and label in, profile and report out, replace only after confirmation), `faceforge.profile_report`, the script text and the profile box in the panel; `Video to face` and `Import CSV` use the profile when set
 
 ## Phase 5: Docs and checks
 
