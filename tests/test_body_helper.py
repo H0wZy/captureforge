@@ -75,12 +75,15 @@ def test_setup_env_plan_and_dry_run():
     r = run_script("setup_env.py", "--venv", venv)
     assert r.returncode == 0 and not os.path.exists(venv), "without --yes it only prints the plan"
     out = r.stdout
-    for needle in (venv, "mediapipe", "opencv-python", "storage.googleapis.com", "pose_landmarker_heavy",
-                   "pose_landmarker_lite", "hand_landmarker", "--yes"):
+    for needle in (venv, "mediapipe==", "opencv-contrib-python==", "numpy==", "storage.googleapis.com",
+                   "pose_landmarker_heavy", "pose_landmarker_lite", "hand_landmarker", "--yes"):
         assert needle in out, f"plan text should mention {needle}"
+    assert "opencv-python==" not in out, "the lock pins contrib only (mediapipe needs it; two cv2 packages clash)"
     r2 = run_script("setup_env.py", "--venv", venv, "--yes", "--dry-run")
     assert r2.returncode == 0 and not os.path.exists(venv), "--dry-run does nothing"
     assert "pip install" in r2.stdout and "venv" in r2.stdout and "download" in r2.stdout.lower()
+    lock = os.path.join(fx.ROOT, "captureforge", "helper-requirements.txt")
+    assert "--only-binary=:all:" in r2.stdout and f"-r {lock}" in r2.stdout, r2.stdout
     plan = fx.implemented(getattr(setup_env, "plan_text", lambda *a: None)(venv))
     assert venv in plan
 
@@ -387,12 +390,18 @@ def test_video_check_helper_setup_plan_and_system_python():
     assert "storage.googleapis.com" in plan and "mediapipe" in plan
     found = mod.find_system_python()
     assert found == "" or os.path.isfile(found) or os.path.basename(found), found
+    # the helper venv is made by the running Python (Blender's own) when it can, else a system Python
+    assert mod.helper_python() == sys.executable
+    assert mod.helper_python(lambda exe: False, lambda: "/usr/bin/python3") == "/usr/bin/python3"
+    assert mod.helper_python(lambda exe: False, lambda: "") == ""
     try:
         mod.start_setup("", os.path.join(TMP, "venv"))
     except ValueError as e:
         assert "python.org" in str(e)
     else:
         raise AssertionError("expected ValueError")
+    assert "Install helper" in mod.SETUP_TEXT and "opencv-python " not in mod.SETUP_TEXT
+    assert "requirements-mocap.txt" in mod.SETUP_TEXT
 
 
 if __name__ == "__main__":

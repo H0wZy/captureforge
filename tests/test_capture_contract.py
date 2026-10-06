@@ -20,6 +20,16 @@ def test_only_the_tracker_imports_mediapipe():
     assert found == ["captureforge/face/helpers/tracker.py"], found
 
 
+def test_one_list_of_the_52_names():
+    """The ARKit names live in captureforge/face/presets.py only; the tracker reads that file."""
+    import tracker
+    src = (HELPERS / "tracker.py").read_text(encoding="utf-8")
+    assert '"eyeBlinkLeft", "eyeLookDownLeft"' not in src, "tracker.py must not keep its own copy"
+    sys.path.insert(0, str(ROOT / "captureforge" / "face"))
+    import presets
+    assert tracker.ARKIT_52 == presets.ARKIT_52 and len(tracker.ARKIT_52) == 52
+
+
 def test_tracker_imports_without_mediapipe():
     import tracker
     assert "mediapipe" not in sys.modules

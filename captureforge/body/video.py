@@ -18,7 +18,7 @@ POSE_URL = ("https://storage.googleapis.com/mediapipe-models/pose_landmarker/pos
 
 SETUP_LINES = [
     "1. Preferences > Add-ons > CaptureForge > Install helper: it shows what it will download and asks first.",
-    "2. Manual alternative: python -m venv .venv, then .venv/Scripts/python -m pip install mediapipe opencv-python",
+    "2. Manual alternative: python -m venv .venv, then .venv/Scripts/python -m pip install -r requirements-mocap.txt",
     "   (Linux/macOS: .venv/bin/python), and download a pose model: " + POSE_URL,
     "3. Preferences > Add-ons > CaptureForge: set Python = the venv's python, Pose model = the pose_landmarker .task file.",
 ]
@@ -190,11 +190,30 @@ def find_system_python():
     return ""
 
 
+def can_make_venv(exe):
+    """True when this Python has venv and ensurepip (Blender's bundled one does on 4.4 and 5.2)."""
+    try:
+        return subprocess.run([exe, "-c", "import venv, ensurepip"], capture_output=True, timeout=60,
+                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def helper_python(works=can_make_venv, fallback=find_system_python):
+    """The Python that creates the helper venv: the running one (Blender's own) when it can, else a system Python,
+    else ''. A computer without a Python of its own still gets a helper."""
+    if sys.executable and works(sys.executable):
+        return sys.executable
+    return fallback()
+
+
 def start_setup(system_python, venv, hands=False):
-    """Run setup_env.py --yes with a system Python; returns a Job (its summary holds the paths for the preferences)."""
+    """Run setup_env.py --yes with the helper Python (helper_python()); returns a Job (its summary holds the paths for
+    the preferences)."""
     if not system_python:
-        raise ValueError("No Python 3.10 or newer was found on this computer. Install one from python.org "
-                         "(tick 'Add python.exe to PATH') and press Install helper again.")
+        raise ValueError("No Python that can create the helper environment was found (Blender's own could not). "
+                         "Install Python from python.org (tick 'Add python.exe to PATH') and press Install helper "
+                         "again.")
     cmd = [system_python, SETUP_SCRIPT, "--venv", venv, "--yes"] + (["--hands"] if hands else [])
     return Job(cmd, "", system_python)
 

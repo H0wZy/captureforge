@@ -219,9 +219,11 @@ animation on a **Mixamo/Unity Humanoid** armature, cleans it up and exports an F
 clip. It adds a `BodyForge` panel in the same `CaptureForge` tab.
 
 1. **Helper (one time).** Preferences > Add-ons > CaptureForge > **Install helper**. It shows what it will do (a
-   Python environment with `mediapipe` and `opencv-python`, and the MediaPipe pose model, about 31 MB, Apache-2.0,
-   from Google's storage) and asks before it downloads anything. The same environment serves FaceForge. Without the
-   helper the add-on keeps working and shows setup steps.
+   Python environment created by Blender's own Python, so no separate Python install is needed, with the exact
+   versions of `captureforge/helper-requirements.txt` (`mediapipe`, `opencv-contrib-python`, `numpy`), and the
+   MediaPipe pose model, about 31 MB, Apache-2.0, from Google's storage) and asks before it downloads anything. The
+   same environment serves FaceForge; the face model already comes in the release zip. Without the helper the add-on
+   keeps working and shows setup steps.
 2. **Rig.** Pick your Mixamo-style armature (names with or without `mixamorig:`), or **Create reference armature**.
 3. **Film.** Follow the [recording guide](docs/BODYFORGE-RECORDING.md) (fixed phone, 30 fps or more, head to feet in
    view, 1.5 to 2 s standing still at the start). BodyForge warns about low frame rate, a body out of the picture, low

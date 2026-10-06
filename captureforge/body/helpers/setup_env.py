@@ -4,8 +4,9 @@ Usage: python setup_env.py --venv DIR [--hands] [--yes] [--dry-run]
 
 Without --yes it only prints the plan (the venv, the packages and the model URLs with their sizes) and exits 0;
 the add-on shows that text, asks the user to confirm, and runs it again with --yes. It needs no admin rights and
-writes only inside DIR. Run it with a Python 3.10 to 3.12 that MediaPipe supports. The last stdout line of a real
-run is a JSON object with the paths to store in the add-on preferences.
+writes only inside DIR. The packages are the exact pins of captureforge/helper-requirements.txt (binary wheels only).
+The add-on runs it with Blender's own Python when that one can create a venv. The last stdout line of a real run is a
+JSON object with the paths to store in the add-on preferences.
 """
 
 import argparse
@@ -15,9 +16,23 @@ import os
 import subprocess
 import sys
 import urllib.request
+from pathlib import Path
 
 BASE = "https://storage.googleapis.com/mediapipe-models/"
-PACKAGES = ["mediapipe", "opencv-python"]
+LOCK = Path(__file__).resolve().parents[2] / "helper-requirements.txt"  # the add-on's lock file
+
+
+def pins(lock=LOCK):
+    """The name==version lines of the lock file (the same pins as the face helper installer)."""
+    out = []
+    for line in Path(lock).read_text(encoding="utf-8").splitlines():
+        line = line.split("#", 1)[0].strip()
+        if "==" in line:
+            out.append(line)
+    return out
+
+
+
 # name: (url, size in MB, sha256, optional)
 MODELS = {
     "pose_landmarker_heavy.task": (BASE + "pose_landmarker/pose_landmarker_heavy/float16/latest/"
@@ -38,7 +53,7 @@ def venv_python(venv):
 def plan_text(venv, hands=False):
     lines = ["BodyForge helper setup. This will:",
              f"  1. create a Python environment in: {venv}",
-             f"  2. install with pip: {', '.join(PACKAGES)}",
+             f"  2. install with pip (exact versions, binary wheels only): {', '.join(pins())}",
              "  3. download these model files (Apache-2.0, from Google's MediaPipe storage) into "
              f"{os.path.join(venv, 'models')}:"]
     for name, (url, mb, _, optional) in MODELS.items():
@@ -74,7 +89,8 @@ def main(argv=None):
         print(plan_text(venv, a.hands))
         return 0
     steps = [([sys.executable, "-m", "venv", venv], "create the environment"),
-             ([venv_python(venv), "-m", "pip", "install", *PACKAGES], "pip install " + " ".join(PACKAGES))]
+             ([venv_python(venv), "-m", "pip", "install", "--only-binary=:all:", "-r", str(LOCK)],
+              f"pip install --only-binary=:all: -r {LOCK}")]
     if a.dry_run:
         for cmd, what in steps:
             print(f"would run ({what}): {' '.join(cmd)}")

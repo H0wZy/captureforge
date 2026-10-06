@@ -441,7 +441,7 @@ def test_12_video_helper_plumbing():
         try:
             video.run(bad[0], bad[1], vid, out)
         except ValueError as e:
-            assert "Setup:" in str(e) and "pip install mediapipe" in str(e), e
+            assert "Setup:" in str(e) and "Install helper" in str(e) and "requirements-mocap.txt" in str(e), e
         else:
             raise AssertionError("expected ValueError")
     try:

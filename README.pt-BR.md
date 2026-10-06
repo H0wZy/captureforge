@@ -229,9 +229,11 @@ LiDAR) numa animação em um armature **Humanoid Mixamo/Unity**, limpa o resulta
 clipe Humanoid. Ele adiciona um painel `BodyForge` na mesma aba `CaptureForge`.
 
 1. **Helper (uma vez).** Preferências > Add-ons > CaptureForge > **Install helper**. Ele mostra o que vai fazer (um
-   ambiente Python com `mediapipe` e `opencv-python`, e o modelo de pose do MediaPipe, uns 31 MB, Apache-2.0, do
-   armazenamento do Google) e pergunta antes de baixar qualquer coisa. O mesmo ambiente serve ao FaceForge. Sem o helper
-   o add-on continua funcionando e mostra os passos de instalação.
+   ambiente Python criado pelo próprio Python do Blender, então não precisa instalar Python à parte, com as versões
+   exatas de `captureforge/helper-requirements.txt` (`mediapipe`, `opencv-contrib-python`, `numpy`), e o modelo de pose
+   do MediaPipe, uns 31 MB, Apache-2.0, do armazenamento do Google) e pergunta antes de baixar qualquer coisa. O mesmo
+   ambiente serve ao FaceForge; o modelo de rosto já vem no zip da release. Sem o helper o add-on continua funcionando e
+   mostra os passos de instalação.
 2. **Rig.** Escolha seu armature estilo Mixamo (nomes com ou sem `mixamorig:`), ou **Create reference armature**.
 3. **Filme.** Siga o [guia de gravação](docs/pt-BR/BODYFORGE-RECORDING.md) (celular fixo, 30 fps ou mais, da cabeça aos
    pés no quadro, 1,5 a 2 s parado no começo). O BodyForge avisa de taxa de quadros baixa, corpo fora do quadro, pouca

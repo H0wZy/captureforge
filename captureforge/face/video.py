@@ -12,10 +12,11 @@ MODEL_URL = ("https://storage.googleapis.com/mediapipe-models/face_landmarker/"
              "face_landmarker/float16/1/face_landmarker.task")
 
 SETUP_LINES = [
-    "1. python -m venv .venv",
-    "2. .venv/Scripts/python -m pip install mediapipe opencv-python   (Linux/macOS: .venv/bin/python)",
-    "3. Download the model (about 3.6 MB): " + MODEL_URL,
-    "4. Preferences > Add-ons > FaceForge: set Python = the venv's python, Model = the .task file.",
+    "1. Preferences > Add-ons > CaptureForge > Install helper: it shows what it will download and asks first.",
+    "   The release zip already carries the face model; the installer sets up Python, MediaPipe and OpenCV.",
+    "2. Manual alternative: python -m venv .venv, then .venv/Scripts/python -m pip install -r requirements-mocap.txt",
+    "   (Linux/macOS: .venv/bin/python); a development install also needs the model (about 3.6 MB): " + MODEL_URL,
+    "3. Preferences > Add-ons > CaptureForge: set Python = the venv's python (and Face model for a development install).",
 ]
 SETUP_TEXT = "Setup:\n" + "\n".join(SETUP_LINES)
 
