@@ -18,25 +18,21 @@ import os
 from typing import NamedTuple, Optional
 
 LANDMARKS = 478
-# The names and order FaceForge expects (captureforge/face/presets.py ARKIT_52). MediaPipe returns 51 of them (no
-# tongueOut) plus "_neutral", which is dropped.
-ARKIT_52 = [
-    "eyeBlinkLeft", "eyeLookDownLeft", "eyeLookInLeft", "eyeLookOutLeft",
-    "eyeLookUpLeft", "eyeSquintLeft", "eyeWideLeft",
-    "eyeBlinkRight", "eyeLookDownRight", "eyeLookInRight", "eyeLookOutRight",
-    "eyeLookUpRight", "eyeSquintRight", "eyeWideRight",
-    "jawForward", "jawLeft", "jawRight", "jawOpen",
-    "mouthClose", "mouthFunnel", "mouthPucker", "mouthLeft", "mouthRight",
-    "mouthSmileLeft", "mouthSmileRight", "mouthFrownLeft", "mouthFrownRight",
-    "mouthDimpleLeft", "mouthDimpleRight", "mouthStretchLeft", "mouthStretchRight",
-    "mouthRollLower", "mouthRollUpper", "mouthShrugLower", "mouthShrugUpper",
-    "mouthPressLeft", "mouthPressRight", "mouthLowerDownLeft", "mouthLowerDownRight",
-    "mouthUpperUpLeft", "mouthUpperUpRight",
-    "browDownLeft", "browDownRight", "browInnerUp", "browOuterUpLeft", "browOuterUpRight",
-    "cheekPuff", "cheekSquintLeft", "cheekSquintRight",
-    "noseSneerLeft", "noseSneerRight",
-    "tongueOut",
-]
+
+
+def _arkit_names():
+    """The 52 ARKit names in FaceForge's order, read from captureforge/face/presets.py (the one list of them; it is
+    plain Python, so the helper loads it by path without importing the Blender package)."""
+    import importlib.util
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "presets.py")
+    spec = importlib.util.spec_from_file_location("_faceforge_presets", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return list(mod.ARKIT_52)
+
+
+# MediaPipe returns 51 of them (no tongueOut) plus "_neutral", which is dropped.
+ARKIT_52 = _arkit_names()
 MODEL_URL = ("https://storage.googleapis.com/mediapipe-models/face_landmarker/"
              "face_landmarker/float16/1/face_landmarker.task")
 
