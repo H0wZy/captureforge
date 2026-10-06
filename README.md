@@ -183,6 +183,35 @@ shapes. Invalid datagrams are ignored; with `noface` the last pose is held. Run 
 You can also run the helper script yourself:
 `python captureforge/face/helpers/video_to_csv.py video.mp4 -o out.csv --model face_landmarker.task`.
 
+### Actor calibration (experimental, spec 005)
+
+MediaPipe's scores read every face a bit differently. On the maintainer's face a full blink only reached about 0.6, a
+smile also squinted the eyes, and a sad mouth barely read. A one-time calibration learns two corrections per
+expression for one actor: a **gain** (your full expression reaches 1.0, at most 4x) and a **cross-talk removal** (what
+leaks into other keys, such as the squint that comes with your smile, is subtracted). It stays on MediaPipe's own
+scores and is off until you choose a profile.
+
+1. Panel section `4d. Actor calibration`, `Show the script`. Record yourself with the camera at eye level and the
+   whole face in view (forehead to chin, phone upright works best), steady light: 3 s neutral, then the 18 expressions
+   of the script in order, each held about 1 s with about 1 s of neutral face in between (about 40 s in total).
+2. Pick the video as `Calibration video`, type a `Label` (any nickname) and press `Calibrate`. FaceForge finds the 18
+   expressions by itself; if it finds a different number, it lists what it found with the times, so you can record
+   again with clearer pauses.
+3. The profile `<label>.faceprofile.json` is saved next to the video and chosen as `Actor profile`. The report shows
+   per expression the score before and after, what leaked, the keys it cannot detect on your face (on the
+   maintainer's face `cheekPuff` and `noseSneer` never fire, and no gain can raise a zero), whether the recording was
+   mirrored (corrected automatically) and the head angle of the calibration.
+4. With a profile chosen, `Video to face` and `Live webcam` use corrected scores. `Import CSV` applies it only with
+   `Apply actor profile` on (for FaceForge CSVs made without a profile; not for Live Link Face). Clear `Actor profile`
+   to go back to the plain scores.
+
+Command line: `video_to_csv.py video.mp4 -o out.csv --profile me.faceprofile.json`; `--capture take.capture.npz`
+keeps the raw scores, landmarks and head matrices of a take. Limits: one profile per actor and recording setup (a very
+different camera angle corrects less well); the correction is linear; keys the tracker never sees stay as tracked.
+Privacy: the calibration video is face data and stays with you; the temporary capture file is deleted; the profile
+holds only numbers and your label, and `*.faceprofile.json` and `*.capture.npz` are ignored by git. Experimental: the
+go/no-go measurement on two scripted takes (spec 005, task T007) is still to be done.
+
 ## BodyForge: body mocap from one phone video
 
 BodyForge turns one ordinary phone video (any Android phone or webcam, no iPhone, depth sensor or LiDAR) into an

@@ -35,7 +35,7 @@ measured.
 
 ## Phase 5: Docs and checks
 
-- [ ] T011 [P] README.md, README.pt-BR.md and `docs/pt-BR/CALIBRACAO.md`: the script, how to record (eye level, whole face, steady light), panel steps, report, limits, privacy
+- [x] T011 [P] README.md, README.pt-BR.md and `docs/pt-BR/CALIBRACAO.md`: the script, how to record (eye level, whole face, steady light), panel steps, report, limits, privacy
 - [ ] T012 Run every suite (pure, Blender 5.2; CI on 4.4) and the extension validation
 
 ## Dependencies
