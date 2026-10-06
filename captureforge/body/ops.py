@@ -411,7 +411,7 @@ class BODYFORGE_OT_install_helper(bpy.types.Operator):
     def execute(self, context):
         global HELPER_JOB
         try:
-            HELPER_JOB = video.start_setup(video.find_system_python(), _abs(self.venv) or _default_venv(),
+            HELPER_JOB = video.start_setup(video.helper_python(), _abs(self.venv) or _default_venv(),
                                            context.scene.bodyforge.use_hands)
         except ValueError as e:
             self.report({"ERROR"}, str(e))
