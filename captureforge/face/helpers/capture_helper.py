@@ -2,7 +2,8 @@
 
 Blender starts it on Capture and owns its life (specs/004-live-capture-panel):
     python capture_helper.py --port N --token T [--camera 0 | --source FILE | --source synthetic] [--model M]
-           [--smooth 0.3] [--neutral-seconds 2] [--gain 1] [--preview-width 320] [--max-width 1280] [--fake-tracker]
+           [--smooth 0.3] [--neutral-seconds 2] [--gain 1] [--profile P] [--preview-width 320] [--max-width 1280]
+           [--fake-tracker]
     python capture_helper.py --list-cameras      JSON list of {index, name, backend} (opens devices: only on request)
     python capture_helper.py --self-test         imports, model load, one synthetic frame; JSON {"ok": ...}
 
@@ -272,10 +273,21 @@ def open_source(args):
     return Camera(args.source if args.source else args.camera, loop=args.loop)
 
 
+def load_actor_profile(path):
+    if not path:
+        return None
+    from calib import CalibrationError, load_profile  # ../capture, needs numpy
+    try:
+        return load_profile(path)
+    except CalibrationError as e:
+        raise HelperError("profile_invalid", str(e))
+
+
 def capture(args, link):
+    profile = load_actor_profile(args.profile)
     tracker = open_tracker(args)
     cam = open_source(args)
-    stream = Stream(args.neutral_seconds, args.gain, args.smooth)
+    stream = Stream(args.neutral_seconds, args.gain, args.smooth, profile)
     start_mono, start_wall = time.monotonic(), time.time()
     preview_on, preview_every, next_preview = True, 1.0 / PREVIEW_HZ, 0.0
     state, last_ts, last_ms, seq, small = "starting", None, -1, 0, None
@@ -286,7 +298,7 @@ def capture(args, link):
             if cfg:
                 preview_on = bool(cfg.get("preview", preview_on))
                 if cfg.get("recalibrate"):
-                    stream = Stream(cfg.get("neutral_seconds", stream.neutral), stream.gain, stream.smooth)
+                    stream = Stream(cfg.get("neutral_seconds", stream.neutral), stream.gain, stream.smooth, profile)
                 stream.gain = float(cfg.get("gain", stream.gain))
                 stream.smooth = min(max(float(cfg.get("smooth", stream.smooth)), 0.0), 0.99)
             frame = cam.read()
@@ -350,6 +362,7 @@ def build_parser():
     ap.add_argument("--smooth", type=float, default=0.3)
     ap.add_argument("--neutral-seconds", type=float, default=2.0)
     ap.add_argument("--gain", type=float, default=1.0)
+    ap.add_argument("--profile", default="", help="actor profile (.faceprofile.json, spec 005) for the calibrated scores")
     ap.add_argument("--preview-width", type=int, default=320)
     ap.add_argument("--max-width", type=int, default=1280, help="frames wider than this are scaled down first")
     ap.add_argument("--fake-tracker", action="store_true", help="tests: a fake tracker that needs numpy only")

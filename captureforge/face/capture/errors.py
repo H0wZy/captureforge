@@ -36,11 +36,13 @@ CODES = {
         _ANY: "Press Capture again (a new port is chosen); if it keeps failing, check local firewall software."}),
     "token_mismatch": ("Another program answered on the capture port.", {
         _ANY: "Press Capture again; the connection is local and refuses programs without this session's key."}),
+    "profile_invalid": ("The actor profile file cannot be used.", {
+        _ANY: "Choose another .faceprofile.json in the FaceForge panel, or calibrate again."}),
     "version_mismatch": ("The capture helper does not match this add-on version.", {
         _ANY: "Reinstall or update the add-on so the helper script and the add-on come from the same release."}),
 }
 HELPER_CODES = ("no_camera", "camera_busy", "permission_denied", "no_frames", "helper_missing", "model_missing",
-                "model_corrupt")
+                "model_corrupt", "profile_invalid")
 
 
 def os_key(platform=None):

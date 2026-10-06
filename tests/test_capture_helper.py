@@ -192,6 +192,40 @@ def test_self_test():
     assert p.returncode == 2 and "error_code: model_missing" in p.stderr, p.stderr
 
 
+def test_profile_in_the_live_stream():
+    import os
+    import tempfile
+    prof = {"format": "faceforge-actor-profile", "version": 1, "mirrored": False, "gains": {"jawOpen": 4.0},
+            "crosstalk": {}, "undetected": []}
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, "me.faceprofile.json")
+        with open(path, "w") as f:
+            json.dump(prof, f)
+        b = Blender(*FAKE, "--smooth", "0", "--neutral-seconds", "0", "--profile", path)
+        try:
+            b.accept()
+            n = [0]
+
+            def enough(h):  # 60 live frames with a face
+                n[0] += h["type"] == "frame" and h["cal"] is not None and h["raw"] is not None
+                return n[0] >= 60
+            b.read_until(enough)
+            cal = [h["cal"][17] for h, _ in b.msgs if h["type"] == "frame" and h["cal"] is not None]
+            raw = [h["raw"][17] for h, _ in b.msgs if h["type"] == "frame" and h["raw"] is not None]
+            assert max(raw) < 0.95 and max(cal) == 1.0, (max(raw), max(cal))  # gain 4 saturates; raw never does
+        finally:
+            b.close()
+        with open(path, "w") as f:
+            f.write("not json")
+        b = Blender(*FAKE, "--profile", path)
+        try:
+            b.accept()
+            err = b.read_until(lambda h: h["type"] == "error")
+            assert err and err[0]["code"] == "profile_invalid", b.msgs
+        finally:
+            b.close()
+
+
 if __name__ == "__main__":
     try:
         import numpy  # noqa: F401
