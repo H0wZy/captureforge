@@ -68,6 +68,31 @@ def test_video_helper_uses_the_shared_steps():
     assert v.HEAD_COLUMNS == post.HEAD_COLUMNS
 
 
+PROFILE = {"format": "faceforge-actor-profile", "version": 1, "mirrored": False,
+           "gains": {"jawOpen": 2.0}, "crosstalk": {"eyeBlinkLeft": {"jawOpen": 0.5}}, "undetected": []}
+
+
+def test_process_with_an_actor_profile():
+    """The profile corrects the calibrated rows before smoothing (spec 005); without one nothing changes."""
+    try:
+        import numpy  # noqa: F401
+    except ImportError:
+        print("  (skipped: the actor profile needs numpy)")
+        return
+    names = ["jawOpen", "eyeBlinkLeft"]
+    raw = [[0.3, 0.2], [0.1, 0.0]]
+    out = post.process([0.0, 0.1], raw, [None, None], 0.0, 1.0, 0.0, names=names, profile=PROFILE)
+    assert same(out["rows"], [[0.6, 0.05], [0.2, 0.0]]), out["rows"]
+    plain = post.process([0.0, 0.1], raw, [None, None], 0.0, 1.0, 0.0, names=names)
+    assert same(plain["rows"], raw)
+    try:
+        post.process([0.0, 0.1], raw, [None, None], 0.0, 1.0, 0.0, profile=PROFILE)
+    except ValueError as e:
+        assert "names" in str(e)
+    else:
+        raise AssertionError("a profile needs the column names")
+
+
 if __name__ == "__main__":
     tests = [f for k, f in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

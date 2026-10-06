@@ -117,18 +117,25 @@ def head_pose(mats, times, neutral_seconds, valid=None):
     return unbreak([list(matrix_to_euler(r)) for r in rel]), [[a - b for a, b in zip(t, t0)] for t in ts]
 
 
-def process(times, raw_rows, mats, neutral_seconds=2.0, gain=1.0, smoothing=0.3, head=True):
+def process(times, raw_rows, mats, neutral_seconds=2.0, gain=1.0, smoothing=0.3, head=True, names=None, profile=None):
     """The video path's steps on one take. raw_rows: per frame a list of scores or None (no face); mats: per frame
     the facial transformation matrix (16 row-major floats) or None. Returns {"rows", "missing", "rot", "pos"}:
     calibrated and smoothed rows, the count of frames without a face, and the head pose rows (None when head is off
-    or the tracker gave no matrix). ValueError when no frame has a face."""
+    or the tracker gave no matrix). ValueError when no frame has a face.
+    profile: an actor profile (calib.py, spec 005) applied between the neutral calibration and the smoothing; it
+    needs `names`, the score column names, and numpy."""
+    if profile is not None and names is None:
+        raise ValueError("an actor profile needs the score column names")
     valid = [r is not None for r in raw_rows]
     rows, missing = hold_gaps(raw_rows)
-    rows = smooth(calibrate(rows, times, neutral_seconds, gain, valid), smoothing)
+    rows = calibrate(rows, times, neutral_seconds, gain, valid)
+    if profile is not None:
+        from calib import apply  # same folder, needs numpy; only loaded with a profile
+        rows = apply(profile, names, rows).tolist()
+    rows = smooth(rows, smoothing)
     rot = pos = None
     if head and any(m is not None for m in mats):
         filled, _ = hold_gaps(mats)
         rot, pos = head_pose(filled, times, neutral_seconds, valid)
         rot, pos = smooth(rot, smoothing), smooth(pos, smoothing)
     return {"rows": rows, "missing": missing, "rot": rot, "pos": pos}
-

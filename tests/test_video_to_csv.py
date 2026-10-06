@@ -238,6 +238,12 @@ def test_capture_file_round_trip():
     assert v.build_parser().parse_args(["x.mp4", "-o", "x.csv", "--capture", "x.capture.npz"]).capture == "x.capture.npz"
 
 
+def test_profile_option():
+    a = v.build_parser().parse_args(["x.mp4", "-o", "x.csv", "--profile", "me.faceprofile.json"])
+    assert a.profile == "me.faceprofile.json"
+    assert v.build_parser().parse_args(["x.mp4", "-o", "x.csv"]).profile is None
+
+
 if __name__ == "__main__":
     tests = [f for k, f in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

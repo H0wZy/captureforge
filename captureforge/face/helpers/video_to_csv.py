@@ -2,7 +2,7 @@
 
 Usage: python video_to_csv.py input.mp4 -o out.csv [--model face_landmarker.task]
        [--smooth 0..1] [--neutral-seconds 2] [--gain 1.0] [--preview out_preview.mp4] [--no-head-pose]
-       [--capture take.capture.npz]
+       [--capture take.capture.npz] [--profile me.faceprofile.json]
 
 Besides the shape columns the CSV gets the head pose: headRotX/Y/Z (radians, relative to the neutral head,
 Euler order Ry * Rx * Rz = yaw, pitch, roll in the head frame: X = the person's left, Y up, Z out of the face)
@@ -155,6 +155,7 @@ def build_parser():
     ap.add_argument("--gain", type=float, default=1.0)
     ap.add_argument("--preview", help="write a debug video with landmarks and the top 5 shapes")
     ap.add_argument("--no-head-pose", action="store_true", help="do not write the headRot/headPos columns")
+    ap.add_argument("--profile", help="actor profile (.faceprofile.json, spec 005) that corrects the scores")
     ap.add_argument("--capture", help="also write the per-frame raw scores, landmarks and head matrices to this .npz "
                                       "(face data; the actor calibration reads it)")
     ap.add_argument("--crop", help="BodyForge landmarks.npz with a per-frame head box: track the face inside that "
@@ -207,9 +208,17 @@ def main():
         if a.capture:
             _fail("--capture needs the whole frame: it cannot be combined with --crop")
 
+    profile = None
+    if a.profile:
+        from calib import CalibrationError, load_profile  # ../capture, needs numpy
+        try:
+            profile = load_profile(a.profile)
+        except CalibrationError as e:
+            _fail(str(e))
     times, raw, names, marks, mats = detect(a.video, a.model, bool(a.preview or a.capture), boxes)
     try:
-        out = process(times, raw, mats, a.neutral_seconds, a.gain, a.smooth, head=not a.no_head_pose)
+        out = process(times, raw, mats, a.neutral_seconds, a.gain, a.smooth, head=not a.no_head_pose,
+                      names=names, profile=profile)
     except ValueError as e:
         _fail(str(e))
     if out["missing"]:

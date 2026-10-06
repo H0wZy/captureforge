@@ -22,9 +22,14 @@
 
 - [ ] T007 Go/no-go: two scripted takes of the maintainer (not committed); learn on take 1, evaluate on take 2 and the other way round; SC-001 to SC-004. Numbers in `specs/005-actor-calibration/research.md`. No-go stops the feature here.
 
-## Phase 4: Integration (after a go)
+## Phase 4: Integration
 
-- [ ] T008 [US2] Tests then code: `post.process(..., profile=None)` and `video_to_csv.py --profile` (no profile: byte-identical CSV, the existing golden test stays green)
+The maintainer asked on 2026-10-06 to implement the integration before the recordings for T007 exist. Everything
+stays off by default (no profile chosen = no change), and the README marks the feature experimental until T007 is
+measured.
+
+
+- [x] T008 [US2] Tests then code: `post.process(..., profile=None)` and `video_to_csv.py --profile` (no profile: byte-identical CSV, the existing golden test stays green)
 - [ ] T009 [US2] Tests then code: the live capture stream applies the profile per frame (spec 004 helper `--profile`)
 - [ ] T010 [US1][US2][US3] Blender tests then code: settings (`actor_profile`, `csv_apply_profile`), `faceforge.calibrate` (video and label in, profile and report out, replace only after confirmation), `faceforge.profile_report`, the script text and the profile box in the panel; `Video to face` and `Import CSV` use the profile when set
 
