@@ -36,7 +36,7 @@ measured.
 ## Phase 5: Docs and checks
 
 - [x] T011 [P] README.md, README.pt-BR.md and `docs/pt-BR/CALIBRACAO.md`: the script, how to record (eye level, whole face, steady light), panel steps, report, limits, privacy
-- [ ] T012 Run every suite (pure, Blender 5.2; CI on 4.4) and the extension validation
+- [x] T012 Run every suite (pure, Blender 5.2; CI on 4.4) and the extension validation. Done 2026-10-06: 14 pure test files, FaceForge 26 and BodyForge 20 Blender tests on 5.2.1 with the real tracker, `extension validate` passes; 4.4 runs in CI only. Open: T007 (the go/no-go numbers on two scripted takes)
 
 ## Dependencies
 

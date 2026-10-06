@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-05
 
-**Status**: Draft
+**Status**: Implemented behind an off-by-default option (experimental); the go/no-go measurement T007 is open
 
 **Input**: User description: "FaceForge per-actor calibration of the generic MediaPipe blendshape scores. The actor records a short scripted calibration clip (neutral, then each expression once). From it FaceForge learns, per key, a gain (so the actor's full expression reaches 1.0) and a cross-talk correction (subtract the co-activation that leaks into other keys, e.g. eyeSquint during a smile, eyeLookDown during a blink). The calibration is saved as a small profile file per actor and applied to every later video, CSV import and live capture of that actor, on any character. Stays on MediaPipe's own scores (spec 003's geometric fit was a no-go). Free/open-source only, numpy only in Blender, pure-testable, off by default, generic path unchanged."
 
