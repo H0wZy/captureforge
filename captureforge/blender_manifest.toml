@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "captureforge"
-version = "0.1.0"
+version = "0.2.0"
 name = "CaptureForge"
 tagline = "Face and body mocap from video: ARKit shapes, Humanoid clips"
 maintainer = "H0wZy"
