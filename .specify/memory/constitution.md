@@ -1,5 +1,18 @@
 <!--
 Sync Impact Report
+- Version change: 1.0.0 -> 1.0.1 (PATCH, wording clarification, 2026-10-05)
+- Modified principles: none; Technical and Legal Constraints, models bullet: "downloaded by the user, never committed"
+  becomes "never committed; downloaded by the user, or added to the release zip by CI from a pinned URL with a pinned
+  SHA-256, the license text and an attribution note"
+- Reason: the live capture panel (specs/004-live-capture-panel) must work offline right after the helper
+  environment is created, and the 3.6 MB Face Landmarker model (Apache-2.0, redistribution allowed with the license
+  text and attribution) should not depend on a download URL that can change. The repository itself stays clean.
+- Migration impact: none for existing specs. Pose and hand models (BodyForge) are still downloaded by the user;
+  the release workflow gains one step (specs/004-live-capture-panel T026). Principle V is unchanged: every bundled
+  weight must be under a GPL-3.0-compatible license, and non-commercial weights stay out of the default path.
+- Needs the maintainer's approval (Governance) before the amendment is merged.
+
+Previous report:
 - Version change: (template) -> 1.0.0
 - Modified principles: none (initial ratification)
 - Added sections: Core Principles I-X, Technical and Legal Constraints, Development Workflow, Governance
@@ -81,7 +94,10 @@ Rationale: reproducible releases that users can trust.
 - Helper processes run in a venv created by the extension; no system-wide installs, no admin rights.
 - Network: no telemetry. Network access happens only on explicit user action (for example model download)
   and the destination is shown to the user.
-- Models and weights are downloaded by the user, never committed to the repository (`models/` stays ignored).
+- Models and weights are never committed to the repository (`models/` stays ignored). They are downloaded by the
+  user, or, for a model small enough for the zip (the face model today), added to the release zip by CI from a pinned
+  URL after checking a pinned SHA-256, together with the license text and an attribution note in
+  `THIRD_PARTY_NOTICES.md`. Principle V applies to every such file.
 
 ## Development Workflow
 
@@ -104,4 +120,4 @@ MINOR for adding a principle or materially expanding one, PATCH for wording and 
 Compliance: every plan has a Constitution Check, and every PR review verifies the principles that apply.
 Violations that are really needed MUST be justified in writing in the plan and are temporary by default.
 
-**Version**: 1.0.0 | **Ratified**: 2026-10-03 | **Last Amended**: 2026-10-03
+**Version**: 1.0.1 | **Ratified**: 2026-10-03 | **Last Amended**: 2026-10-05

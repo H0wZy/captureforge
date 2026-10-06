@@ -26,6 +26,16 @@ jobs:
       - run: |
           python3 tests/test_video_to_csv.py
           python3 tests/test_webcam_stream.py
+          python3 tests/test_capture_post.py
+          python3 tests/test_capture_contract.py
+          python3 tests/test_capture_protocol.py
+          python3 tests/test_capture_errors.py
+          python3 tests/test_capture_setup.py
+      # Pure body tests need numpy; installed here for the test run only (it is not a dependency of the add-on).
+      - run: |
+          python3 -m venv .venv-dev
+          .venv-dev/bin/pip install numpy
+          for t in tests/test_body_*.py tests/test_capture_*.py tests/test_video_to_csv.py; do .venv-dev/bin/python "$t" || exit 1; done
 
   # Stage 2: the real suite inside Blender, oldest supported LTS and the current release.
   blender:
@@ -47,6 +57,8 @@ jobs:
         run: ./blender/blender --command extension validate captureforge
       - name: Blender tests
         run: timeout 600 ./blender/blender --background --factory-startup --python tests/run_tests.py
+      - name: BodyForge Blender tests
+        run: timeout 600 ./blender/blender --background --factory-startup --python tests/run_body_tests.py
 
   # Stage 3: the installable zip, kept as a workflow artifact.
   build:
@@ -57,9 +69,25 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-blender
         with: { version: "5.2.1", series: "5.2" }
+      # The face model goes into the zip from a pinned URL, checked against a pinned SHA-256 and size, with the
+      # Apache-2.0 text (constitution v1.0.1; specs/004-live-capture-panel T026). It is never committed. The same pins
+      # live in captureforge/face/capture/setup.py (a unit test keeps them equal); any mismatch fails the build.
+      - name: Bundle the face model
+        env:
+          MODEL_URL: https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task
+          MODEL_SHA256: 64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff
+          MODEL_SIZE: "3758596"
+        run: |
+          mkdir -p captureforge/models captureforge/licenses
+          curl -fL --retry 3 -o captureforge/models/face_landmarker.task "$MODEL_URL"
+          test "$(stat -c %s captureforge/models/face_landmarker.task)" = "$MODEL_SIZE"
+          echo "$MODEL_SHA256  captureforge/models/face_landmarker.task" | sha256sum -c -
+          cp licenses/Apache-2.0.txt captureforge/licenses/Apache-2.0.txt
       - run: |
           mkdir -p dist
           ./blender/blender --command extension build --source-dir captureforge --output-dir dist
+          unzip -l dist/*.zip | grep -q "models/face_landmarker.task"
+          unzip -l dist/*.zip | grep -q "licenses/Apache-2.0.txt"
       - uses: actions/upload-artifact@v7
         with:
           name: captureforge-zip

@@ -13,18 +13,18 @@ terminating the process. ponytail: it never learns the parent died; the add-on k
 
 import argparse
 import json
-import os
 import socket
 import time
 
-from video_to_csv import ARKIT_52, _fail, _import_deps
+from video_to_csv import ARKIT_52, _fail, _import_cv, open_tracker
 
 
 class Stream:
     """Streaming version of video_to_csv's calibrate + smooth: feed (t, scores or None), get (state, vector)."""
 
-    def __init__(self, neutral_seconds=2.0, gain=1.0, smooth=0.3):
+    def __init__(self, neutral_seconds=2.0, gain=1.0, smooth=0.3, profile=None):
         self.neutral, self.gain, self.smooth = neutral_seconds, gain, min(max(smooth, 0.0), 0.99)
+        self.profile = profile  # actor profile (spec 005): applied after the neutral, before the smoothing
         self.t0 = None
         self.sum, self.n = [0.0] * len(ARKIT_52), 0
         self.base = None
@@ -44,6 +44,9 @@ class Stream:
                 return "calibrating", [0.0] * len(raw)
             self.base = [s / self.n for s in self.sum] if self.n else [0.0] * len(raw)
         out = [min(1.0, max(0.0, (x - b) * self.gain)) for x, b in zip(raw, self.base)]
+        if self.profile is not None:
+            from calib import apply  # ../capture (on sys.path through video_to_csv), needs numpy
+            out = apply(self.profile, ARKIT_52, [out])[0].tolist()
         self.prev = [self.smooth * p + (1 - self.smooth) * x for p, x in zip(self.prev, out)]
         return "live", list(self.prev)
 
@@ -63,34 +66,31 @@ def main():
     ap.add_argument("--neutral-seconds", type=float, default=2.0)
     ap.add_argument("--gain", type=float, default=1.0)
     ap.add_argument("--loop", action="store_true", help="restart a video file when it ends")
+    ap.add_argument("--profile", help="actor profile (.faceprofile.json, spec 005) that corrects the scores")
     a = ap.parse_args()
+    profile = None
+    if a.profile:
+        from calib import CalibrationError, load_profile
+        try:
+            profile = load_profile(a.profile)
+        except CalibrationError as e:
+            _fail(str(e))
 
-    cv2, np, mp, mp_python, vision = _import_deps()
-    if not os.path.isfile(a.model):
-        _fail(f"model file not found: {a.model}")
+    cv2, _ = _import_cv()
+    tracker = open_tracker("live", a.model)
     is_file = not a.source.isdigit()
     cap = cv2.VideoCapture(a.source if is_file else int(a.source))
     if not cap.isOpened():
         _fail(f"cannot open {'video' if is_file else 'camera'}: {a.source}")
     pace = (1.0 / (cap.get(cv2.CAP_PROP_FPS) or 30.0)) if is_file else 0.0  # a camera paces itself
 
-    latest = {"scores": None}
-
-    def on_result(result, _image, _ts):
-        latest["scores"] = ({c.category_name: c.score for c in result.face_blendshapes[0]}
-                            if result.face_blendshapes else None)
-
-    opts = vision.FaceLandmarkerOptions(
-        base_options=mp_python.BaseOptions(model_asset_path=a.model),
-        running_mode=vision.RunningMode.LIVE_STREAM, output_face_blendshapes=True, num_faces=1,
-        result_callback=on_result)
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    stream = Stream(a.neutral_seconds, a.gain, a.smooth)
+    stream = Stream(a.neutral_seconds, a.gain, a.smooth, profile)
     start = time.monotonic()
     next_send, period, last_ms = start, 1.0 / a.hz, -1
     print(f"streaming {a.source} to {a.host}:{a.port} at {a.hz:g} Hz", flush=True)
     try:
-        with vision.FaceLandmarker.create_from_options(opts) as lm:
+        with tracker:
             while True:
                 t_frame = time.monotonic()
                 ok, frame = cap.read()
@@ -102,11 +102,10 @@ def main():
                 now = time.monotonic()
                 ms = max(int((now - start) * 1000), last_ms + 1)  # strictly increasing
                 last_ms = ms
-                lm.detect_async(mp.Image(image_format=mp.ImageFormat.SRGB,
-                                         data=cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)), ms)
+                latest = tracker.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), ms)
                 if now >= next_send:
                     next_send = max(next_send + period, now)
-                    state, vec = stream.update(now - start, latest["scores"])
+                    state, vec = stream.update(now - start, latest.scores if latest is not None else None)
                     sock.sendto(packet(now - start, state, vec), (a.host, a.port))
                 if pace:
                     time.sleep(max(0.0, pace - (time.monotonic() - t_frame)))

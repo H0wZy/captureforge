@@ -48,6 +48,23 @@ def test_packet_format():
     assert msg["state"] == "live" and len(msg["v"]) == 52 and msg["v"][0] == 0.1235 and msg["t"] == 1.2346
 
 
+def test_stream_applies_an_actor_profile():
+    """The live drive gets the same correction as the video path (spec 005): after the neutral, before smoothing."""
+    try:
+        import numpy  # noqa: F401
+    except ImportError:
+        print("  (skipped: the actor profile needs numpy)")
+        return
+    prof = {"format": "faceforge-actor-profile", "version": 1, "mirrored": False, "gains": {"eyeBlinkLeft": 2.0},
+            "crosstalk": {"eyeSquintLeft": {"eyeBlinkLeft": 0.5}}, "undetected": []}
+    s = w.Stream(neutral_seconds=0.0, gain=1.0, smooth=0.0, profile=prof)
+    blink, squint = v.ARKIT_52.index("eyeBlinkLeft"), v.ARKIT_52.index("eyeSquintLeft")
+    state, vec = s.update(0.0, {"eyeBlinkLeft": 0.4, "eyeSquintLeft": 0.3})
+    assert state == "live" and close(vec[blink], 0.8) and close(vec[squint], 0.1), (vec[blink], vec[squint])
+    plain = w.Stream(neutral_seconds=0.0, gain=1.0, smooth=0.0).update(0.0, {"eyeBlinkLeft": 0.4})[1]
+    assert close(plain[blink], 0.4)
+
+
 if __name__ == "__main__":
     tests = [f for k, f in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

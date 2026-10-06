@@ -4,13 +4,15 @@ import bpy
 from bpy.props import (BoolProperty, CollectionProperty, EnumProperty, FloatProperty,
                        IntProperty, PointerProperty, StringProperty)
 
+from .. import prefs
 from . import live
+from .capture import calib
 
 
 # One sidebar tab for the whole suite: sibling modules (body, scan) put their panels in the same category.
 CATEGORY = "CaptureForge"
 # The add-on (extension) id: the suite package that contains this module. Preferences live under it.
-ADDON_ID = __package__.rpartition(".")[0]
+ADDON_ID = prefs.ADDON_ID
 
 
 def _live_record_changed(self, context):
@@ -24,20 +26,8 @@ def _is_mesh(self, obj):
     return obj.type == "MESH"
 
 
-class FFPreferences(bpy.types.AddonPreferences):
-    bl_idname = ADDON_ID
-
-    python_path: StringProperty(
-        name="Python", subtype="FILE_PATH",
-        description="python executable that has mediapipe and opencv-python installed (a venv is fine)")
-    model_path: StringProperty(
-        name="Model", subtype="FILE_PATH",
-        description="MediaPipe face_landmarker.task file")
-
-    def draw(self, context):
-        self.layout.prop(self, "python_path")
-        self.layout.prop(self, "model_path")
-        self.layout.operator("faceforge.setup_help")
+def _is_armature(self, obj):
+    return obj.type == "ARMATURE"
 
 
 class FFPair(bpy.types.PropertyGroup):
@@ -79,6 +69,22 @@ class FFSettings(bpy.types.PropertyGroup):
                            description="Frame rate of the Timecode column (Live Link Face default 60)")
     csv_mapping: StringProperty(name="Rename", description="Optional column=key pairs, comma separated")
     mocap_start_frame: IntProperty(name="Start frame", default=1)
+    head_pose: BoolProperty(name="Head pose", default=True,
+                            description="Also key the head rotation of the CSV (headRot columns) on a bone")
+    head_armature: PointerProperty(name="Rig", type=bpy.types.Object, poll=_is_armature,
+                                   description="Armature with the head bone; empty = the one on the targets, "
+                                               "else the only one in the scene that has the bone")
+    head_bone: StringProperty(name="Head bone", default="Head", description="Matched without caring about case")
+    neck_bone: StringProperty(name="Neck bone", default="Neck")
+    neck_share: FloatProperty(name="Neck share", default=0.0, min=0.0, max=1.0, subtype="FACTOR",
+                              description="Part of the rotation given to the neck bone (0.3 = 30 %); "
+                                          "the head bone keeps the rest")
+    head_gain: FloatProperty(name="Head gain", default=1.0, min=0.0,
+                             description="Multiplies the head angles (0.5 = half as much)")
+    head_translate: BoolProperty(name="Translation", default=False,
+                                 description="Also move the head bone with the head position of the video")
+    head_translate_scale: FloatProperty(name="Scale", default=0.01, min=0.0,
+                                        description="Scene units per centimeter of head movement (0.01 = meters)")
     fit_mode: EnumProperty(name="Rig", default="FACEFORGE", items=[
         ("FACEFORGE", "FaceForge rig", "Lean face rig with automatic weights"),
         ("RIGIFY", "Rigify metarig", "Rigify face metarig fitted to the face (needs the Rigify add-on)"),
@@ -99,6 +105,19 @@ class FFSettings(bpy.types.PropertyGroup):
                                  description="Seconds at the start used as the neutral face (0 = off)")
     video_gain: FloatProperty(name="Gain", default=1.0, min=0.0,
                               description="Multiplies every channel after the neutral is removed")
+    calib_video: StringProperty(name="Calibration video", subtype="FILE_PATH",
+                                description="Your recording of the calibration script")
+    calib_label: StringProperty(name="Label", default="actor",
+                                description="Name of the profile file (any nickname, it does not need a real name)")
+    calib_show_script: BoolProperty(name="Show the script", default=False)
+    actor_profile: StringProperty(name="Actor profile", subtype="FILE_PATH",
+                                  description="A .faceprofile.json made by Calibrate; empty = no correction "
+                                              "(Video to face and Live webcam use it when set)")
+    csv_apply_profile: BoolProperty(name="Apply actor profile", default=False,
+                                    description="Correct the CSV with the actor profile (only for FaceForge CSVs "
+                                                "made without one; not for Live Link Face)")
+    calib_report: CollectionProperty(type=FFReportRow)
+    calib_report_index: IntProperty()
     quality_collider: PointerProperty(name="Collider", type=bpy.types.Object, poll=_is_mesh,
                                       description="Closed mesh the keys must not poke into "
                                                   "(eyeball, teeth); empty = skip the check")
@@ -187,6 +206,21 @@ class FACEFORGE_PT_main(bpy.types.Panel):
         row.prop(s, "csv_fps")
         row.prop(s, "mocap_start_frame")
         box.prop(s, "csv_mapping")
+        box.prop(s, "head_pose")
+        if s.head_pose:
+            box.prop(s, "head_armature")
+            row = box.row(align=True)
+            row.prop(s, "head_bone", text="")
+            row.prop(s, "neck_bone", text="")
+            row = box.row(align=True)
+            row.prop(s, "neck_share")
+            row.prop(s, "head_gain")
+            row = box.row(align=True)
+            row.prop(s, "head_translate")
+            sub = row.row()
+            sub.active = s.head_translate
+            sub.prop(s, "head_translate_scale")
+        box.prop(s, "csv_apply_profile")
         box.operator("faceforge.import_csv")
 
         box = lay.box()
@@ -217,6 +251,23 @@ class FACEFORGE_PT_main(bpy.types.Panel):
             box.label(text=line, icon="ERROR")
 
         box = lay.box()
+        box.label(text="4d. Actor calibration (experimental)", icon="USER")
+        box.prop(s, "calib_show_script", icon="TRIA_DOWN" if s.calib_show_script else "TRIA_RIGHT")
+        if s.calib_show_script:
+            col = box.column(align=True)
+            col.label(text=f"Camera at eye level, whole face in view. {calib.LEAD_SECONDS:g} s neutral, then hold each")
+            col.label(text=f"for about {calib.HOLD_SECONDS:g} s with {calib.PAUSE_SECONDS:g} s of neutral in between:")
+            for n, entry in enumerate(calib.SCRIPT, 1):
+                col.label(text=f"{n:2d}. {entry['en']}")
+        box.prop(s, "calib_video")
+        box.prop(s, "calib_label")
+        box.operator("faceforge.calibrate", icon="REC")
+        box.prop(s, "actor_profile")
+        box.operator("faceforge.profile_report", icon="TEXT")
+        if len(s.calib_report):
+            box.template_list("FACEFORGE_UL_report", "calib", s, "calib_report", s, "calib_report_index", rows=4)
+
+        box = lay.box()
         box.label(text="5. Quality inspector", icon="VIEWZOOM")
         box.prop(s, "quality_collider")
         box.prop(s, "quality_group")
@@ -236,4 +287,4 @@ class FACEFORGE_PT_main(bpy.types.Panel):
         box.operator("faceforge.render_sheet")
 
 
-classes = (FFPreferences, FFPair, FFReportRow, FFSettings, FACEFORGE_UL_report, FACEFORGE_UL_pairs, FACEFORGE_PT_main)
+classes = (FFPair, FFReportRow, FFSettings, FACEFORGE_UL_report, FACEFORGE_UL_pairs, FACEFORGE_PT_main)

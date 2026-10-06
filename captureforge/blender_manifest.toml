@@ -3,7 +3,7 @@ schema_version = "1.0.0"
 id = "captureforge"
 version = "0.1.0"
 name = "CaptureForge"
-tagline = "Face rig to ARKit blendshapes, face mocap from video and webcam"
+tagline = "Face and body mocap from video: ARKit shapes, Humanoid clips"
 maintainer = "H0wZy"
 website = "https://howzysolutions.com"
 type = "add-on"
@@ -14,8 +14,8 @@ blender_version_min = "4.4.0"
 license = ["SPDX:GPL-3.0-or-later"]
 
 [permissions]
-files = "Read face mocap CSV files and write review sheet images"
-network = "Receive live face data from a helper process over localhost UDP"
+files = "Read mocap and video files; write clips, reports and FBX"
+network = "Localhost face data; model download only after you confirm"
 
 [build]
 paths_exclude_pattern = ["__pycache__/", ".*"]

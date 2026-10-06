@@ -97,9 +97,10 @@ def apply_scores(targets, scores, record_frame=None, mapping=None):
     return n
 
 
-def helper_command(python, model, port, source=0, smooth=0.3, neutral_seconds=2.0, gain=1.0, hz=30.0):
-    return [python, HELPER, "--model", model, "--source", str(source), "--port", str(port), "--hz", str(hz),
-            "--smooth", str(smooth), "--neutral-seconds", str(neutral_seconds), "--gain", str(gain)]
+def helper_command(python, model, port, source=0, smooth=0.3, neutral_seconds=2.0, gain=1.0, hz=30.0, profile=""):
+    cmd = [python, HELPER, "--model", model, "--source", str(source), "--port", str(port), "--hz", str(hz),
+           "--smooth", str(smooth), "--neutral-seconds", str(neutral_seconds), "--gain", str(gain)]
+    return cmd + (["--profile", profile] if profile else [])
 
 
 class Session:

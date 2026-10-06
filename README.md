@@ -8,11 +8,12 @@ one sidebar tab (`CaptureForge`):
 | Module | What it does | Status |
 |---|---|---|
 | **FaceForge** | Turns a posed facial rig into **ARKit 52 shape keys** (or your own list) and drives them from a video or a webcam, no iPhone needed. | available |
-| **BodyForge** | Markerless body mocap from 1 to 3 phone videos. | roadmap |
+| **BodyForge** | Markerless **body mocap from one phone video**: clean-up, foot lock, report, and a Unity Humanoid FBX export. | available (0.2) |
 | **ScanForge** | Face and body scan from a 360-degree video. | roadmap |
 
 License: GPL-3.0-or-later. Blender 4.4 LTS or newer (developed on 5.2). Pure Python, no extra packages inside
-Blender. Everything below is FaceForge, the module that exists today.
+Blender. **Platforms:** Windows, Linux and Apple Silicon macOS (M1 and later) are supported; **Intel macOS is not
+supported** (MediaPipe publishes no current wheel for it). The FaceForge sections come first; [BodyForge](#bodyforge-body-mocap-from-one-phone-video) has its own section.
 
 ## Why this exists
 
@@ -30,6 +31,8 @@ very welcome.
   deform modifiers and Armature are baked exactly as you see them. Every mesh gets the same key names.
 - **Split Left/Right** with a smooth falloff across the midline (no step on the nose, lips or chin).
 - **Mocap import.** CSV from Live Link Face or a generic CSV (`time` in seconds plus one column per shape).
+- **Head pose.** `Video to face` also writes the head rotation, and the import keys it on your head bone
+  (default `Head`, with an optional neck share, a gain and an on/off switch).
 - **Video to face**. Pick a video, FaceForge runs MediaPipe Face Landmarker in a separate Python and keys
   the result onto your shape keys. Works with any phone (Android friendly), no iPhone needed.
 - **Live webcam.** A helper process streams the 52 scores over localhost UDP; Blender drives the shape keys
@@ -122,6 +125,29 @@ FaceForge reads a generic CSV: a `time` column in seconds and one column per ARK
 spelling as the shape keys (`eyeBlinkLeft`, ...). Column names are matched case-insensitively and a
 `column=key` rename map is available.
 
+**Head pose.** The video helper also writes six optional columns after the shapes (`--no-head-pose` leaves them out):
+
+| Column | Unit | Meaning |
+|---|---|---|
+| `headRotX`, `headRotY`, `headRotZ` | radians | pitch, yaw, roll of the head relative to its neutral pose (zero = the head of the neutral seconds) |
+| `headPosX`, `headPosY`, `headPosZ` | centimeters | head position relative to the neutral one (MediaPipe's scale: approximate) |
+
+The head frame is X = the person's left, Y up, Z out of the face, and the angles are in the order `Ry * Rx * Rz`
+(yaw, then pitch, then roll; Blender Euler `ZXY`). A positive yaw turns to the person's left, a positive pitch looks
+down, a positive roll takes the left side up. The angles come from the MediaPipe facial transformation matrix, are
+made continuous across frames (no 360 degree jumps), and get the same `Smooth` and neutral calibration as the shapes;
+frames without a face hold the last pose. `Gain` does not scale them: use `Head gain` on import.
+
+On import (`4. Mocap CSV`), `Head pose` keys the rotation on the bone called `Head` (any case) of the rig you pick
+in `Rig`; empty, it uses the armature of the targets, else the only armature in the scene that has the bone.
+`Neck share` (0.3 = 30 %) gives that part of the rotation to the `Neck` bone and the head bone keeps the rest, so
+the two add up. `Head gain` multiplies the angles (0.5 for a subtle character). `Translation` also moves the head
+bone with `Scale` scene units per centimeter (0.01 = meters); it needs a head bone that is not Connected, and the
+movement is that of the face, not of the neck. Keys follow the bone's rotation mode (Quaternion or Euler) and go into
+the rig's current action (a new `<rig>_headmocap` one when it has none); other channels of the action are untouched.
+The rig is assumed to be in Blender's default orientation (the character faces -Y, +Z up); bone rolls do not matter.
+A CSV without these columns (older files, Live Link Face) imports exactly as before. Unchecking `Head pose` skips it.
+
 **From a video** (phone recording, Iriun Webcam recording, anything OpenCV can open):
 
 1. Create a Python environment with MediaPipe and OpenCV (any Python version MediaPipe supports):
@@ -157,6 +183,67 @@ shapes. Invalid datagrams are ignored; with `noface` the last pose is held. Run 
 You can also run the helper script yourself:
 `python captureforge/face/helpers/video_to_csv.py video.mp4 -o out.csv --model face_landmarker.task`.
 
+### Actor calibration (experimental, spec 005)
+
+MediaPipe's scores read every face a bit differently. On the maintainer's face a full blink only reached about 0.6, a
+smile also squinted the eyes, and a sad mouth barely read. A one-time calibration learns two corrections per
+expression for one actor: a **gain** (your full expression reaches 1.0, at most 4x) and a **cross-talk removal** (what
+leaks into other keys, such as the squint that comes with your smile, is subtracted). It stays on MediaPipe's own
+scores and is off until you choose a profile.
+
+1. Panel section `4d. Actor calibration`, `Show the script`. Record yourself with the camera at eye level and the
+   whole face in view (forehead to chin, phone upright works best), steady light: 3 s neutral, then the 18 expressions
+   of the script in order, each held about 1 s with about 1 s of neutral face in between (about 40 s in total).
+2. Pick the video as `Calibration video`, type a `Label` (any nickname) and press `Calibrate`. FaceForge finds the 18
+   expressions by itself; if it finds a different number, it lists what it found with the times, so you can record
+   again with clearer pauses.
+3. The profile `<label>.faceprofile.json` is saved next to the video and chosen as `Actor profile`. The report shows
+   per expression the score before and after, what leaked, the keys it cannot detect on your face (on the
+   maintainer's face `cheekPuff` and `noseSneer` never fire, and no gain can raise a zero), whether the recording was
+   mirrored (corrected automatically) and the head angle of the calibration.
+4. With a profile chosen, `Video to face` and `Live webcam` use corrected scores. `Import CSV` applies it only with
+   `Apply actor profile` on (for FaceForge CSVs made without a profile; not for Live Link Face). Clear `Actor profile`
+   to go back to the plain scores.
+
+Command line: `video_to_csv.py video.mp4 -o out.csv --profile me.faceprofile.json`; `--capture take.capture.npz`
+keeps the raw scores, landmarks and head matrices of a take. Limits: one profile per actor and recording setup (a very
+different camera angle corrects less well); the correction is linear; keys the tracker never sees stay as tracked.
+Privacy: the calibration video is face data and stays with you; the temporary capture file is deleted; the profile
+holds only numbers and your label, and `*.faceprofile.json` and `*.capture.npz` are ignored by git. Experimental: the
+go/no-go measurement on two scripted takes (spec 005, task T007) is still to be done.
+
+## BodyForge: body mocap from one phone video
+
+BodyForge turns one ordinary phone video (any Android phone or webcam, no iPhone, depth sensor or LiDAR) into an
+animation on a **Mixamo/Unity Humanoid** armature, cleans it up and exports an FBX that Unity reads as a Humanoid
+clip. It adds a `BodyForge` panel in the same `CaptureForge` tab.
+
+1. **Helper (one time).** Preferences > Add-ons > CaptureForge > **Install helper**. It shows what it will do (a
+   Python environment with `mediapipe` and `opencv-python`, and the MediaPipe pose model, about 31 MB, Apache-2.0,
+   from Google's storage) and asks before it downloads anything. The same environment serves FaceForge. Without the
+   helper the add-on keeps working and shows setup steps.
+2. **Rig.** Pick your Mixamo-style armature (names with or without `mixamorig:`), or **Create reference armature**.
+3. **Film.** Follow the [recording guide](docs/BODYFORGE-RECORDING.md) (fixed phone, 30 fps or more, head to feet in
+   view, 1.5 to 2 s standing still at the start). BodyForge warns about low frame rate, a body out of the picture, low
+   confidence and several people.
+4. **Video to body.** Esc cancels while it tracks. **Hands and fingers** (needs the hand model) adds finger curl and a
+   palm-driven forearm twist; **Video to body and face** also keys the face of the same video with FaceForge.
+5. **Clean up.** Zero-phase smoothing (or a causal preview filter), foot-contact detection and **foot lock**, then
+   **In place**, **Trim**, **Close loop**, **Mirror**. Everything restarts from the raw clip kept on the action.
+6. **Report.** Foot skate (cm/s), bone length drift, joint-limit violations, jitter and weak frame ranges, as text,
+   `report.json` and a `filmstrip.png` for review, written next to the video.
+7. **Export for Unity.** An FBX with the documented preset (T-pose rest, no leaf bones, Y up, baked, deform bones only);
+   it refuses, listing the missing or extra bones, when the armature does not match. In Unity: Animation Type
+   Humanoid, Avatar = the character's avatar.
+
+The pure steps (landmark reader, solver, filters, foot lock, report) are plain numpy functions that take explicit
+data, so scripts and agents can call them without Blender. Limits: one person, one fixed camera, mostly in place;
+depth is the weak axis of single-camera tracking; the foot lock is a heuristic that needs to be off for jumps and
+seated poses; fingers are curl and twist only. Model licenses and checksums are in
+[`docs/BODYFORGE-MODELS.md`](docs/BODYFORGE-MODELS.md). The MediaPipe models are Apache-2.0, are downloaded only
+after you confirm and are never bundled with CaptureForge; the output (landmarks, shape-key and bone animation) is yours. Do not film or animate a real person without their consent
+([POLICY.md](POLICY.md)).
+
 ## Headless, command line and AI agents
 
 The core modules (`bake`, `markers`, `split`, `mocap`, `sheet`, `video`, `quality`, `autofit`, `live`) take explicit objects and do not depend on the UI context, so they run in background Blender:
@@ -191,7 +278,15 @@ Headless, one Blender process:
 timeout 300 "C:/Program Files/Blender Foundation/Blender 5.2/blender.exe" --background --factory-startup --python tests/run_tests.py
 python tests/test_video_to_csv.py
 python tests/test_webcam_stream.py
+# Live capture (spec 004): protocol, errors, installer, post-processing, tracker contract; the helper test needs numpy
+for t in post contract protocol errors setup helper; do python tests/test_capture_$t.py; done
+# BodyForge: pure numpy tests, then the Blender side
+for t in landmarks quat solve helper cleanup; do python tests/test_body_$t.py; done
+timeout 600 "C:/Program Files/Blender Foundation/Blender 5.2/blender.exe" --background --factory-startup --python tests/run_body_tests.py
 ```
+
+BodyForge's real-MediaPipe test renders a synthetic mannequin video and runs it end to end; it is skipped unless
+`BODYFORGE_PYTHON` (the helper venv's python) and `BODYFORGE_POSE_MODEL` (a pose `.task` file) are set.
 
 The first builds a procedural head (sphere, armature, eyes, teeth) and prints `FaceForge tests: N passed,
 M failed`, exiting non-zero on failure. GitHub Actions runs the same on every push. Set `FACEFORGE_PYTHON` (a python with mediapipe and opencv) and
@@ -205,7 +300,7 @@ Validate the manifest with `blender --command extension validate captureforge`.
   Topology-changing modifiers (Subsurf, Mirror, Solidify, Geometry Nodes, ...) are switched off during the
   bake and restored afterwards.
 - The split assumes the midline is at X = 0 of the object.
-- Head and eye rotations from Live Link Face are ignored for now.
+- Head and eye rotations from Live Link Face are ignored for now; head rotation comes from `Video to face` only.
 - The live capture timer (the `Start` button) is a modal operator and is tested by hand; its receive path, parsing,
   recording and helper handling are covered by the headless tests.
 - The review sheet is a Workbench render: good for checking shape, not for presentation.
@@ -215,7 +310,7 @@ Validate the manifest with `blender --command extension validate captureforge`.
 - Presets of starting poses for the generated rig (e.g. `jawOpen` = jaw rotation), so you only tweak style.
 - Corrective shapes for combinations (`jawOpen + mouthSmile`), baked from the combined pose.
 - Export checker: exact 52 names on every mesh, order, blendshape normals, unzeroed keys.
-- Head and eye rotation from the mocap onto bones; Live Link Face UDP streaming.
+- Eye rotation from the mocap onto bones; Live Link Face UDP streaming.
 - Loadable name lists (Audio2Face and others).
 - Listing on extensions.blender.org.
 
@@ -224,13 +319,20 @@ v1.1 ideas:
 - Pose from a reference image: solve the rig so MediaPipe sees the same expression as a photo or an AI image.
 - Automatic wrinkle and tension maps per shape.
 - Expression transfer between characters.
+- Live capture panel inside Blender (spec 004): camera list, preview, record and bake onto the character. Done so
+  far: the capture helper with its local protocol, the tracker contract (`docs/TRACKER-CONTRACT.md`), the helper
+  installer (Blender's own Python, pinned packages, offline afterwards) and the face model in the release zip. Next:
+  the Blender session, the preview overlay and the panel.
+- Weights fitted to the character's own shape keys (spec 003): on hold. A measurement showed that fitting the
+  tracked landmarks makes the weights worse than MediaPipe's own scores on stylized test heads, because the
+  landmarks between the visible features do not follow the skin closely enough. Details:
+  `specs/003-character-fitted-weights/research.md`.
 
 ### The Forge family
 
-Two future sister modules of CaptureForge, in the same spirit (free, Blender, AI-friendly):
+Sister modules of CaptureForge, in the same spirit (free, Blender, AI-friendly):
 
-- **BodyForge**: markerless body mocap from 1 to 3 phone videos (MediaPipe Pose, multi-camera
-  triangulation, foot lock, retarget to a humanoid).
+- **BodyForge** (available, see above). Next ideas: more estimators (RTMW), other rigs and retargeting, 1 to 3 cameras.
 - **ScanForge**: face and body scan from a 360-degree video (sharp-frame pick, COLMAP or Meshroom as external
   tools, wrap onto a clean animatable topology, then FaceForge).
 

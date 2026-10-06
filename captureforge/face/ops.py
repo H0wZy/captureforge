@@ -1,12 +1,16 @@
 """Thin operator wrappers (faceforge.*) around the core modules."""
 
 import os
+import re
+import shutil
 import tempfile
 
 import bpy
 
+from ..prefs import face_model as _face_model
+from ..prefs import pref as _pref
 from . import autofit, bake, live, markers, mocap, presets, quality, sheet, split, video
-from .ui import ADDON_ID
+from .capture import calib
 
 
 def preset_names(settings):
@@ -25,22 +29,45 @@ def _targets(context):
     return out
 
 
-def _import_csv(context, path):
+def _profile_path(context):
+    """The chosen actor profile file, or "" (spec 005). ValueError when it is set but missing."""
+    path = bpy.path.abspath(context.scene.faceforge.actor_profile)
+    if path and not os.path.isfile(path):
+        raise ValueError(f"Actor profile not found: {path}")
+    return path
+
+
+def _import_csv(context, path, profile=None):
     s = context.scene.faceforge
     if not os.path.isfile(path):
         raise ValueError(f"CSV not found: {path}")
     matched, unmatched, n = mocap.import_csv(context.scene, _targets(context), path, s.csv_fps,
-                                             s.mocap_start_frame, mocap.parse_mapping(s.csv_mapping))
+                                             s.mocap_start_frame, mocap.parse_mapping(s.csv_mapping), profile)
     msg = f"{len(matched)} keys animated, {n} rows"
     if unmatched:
         msg += f"; unmatched columns: {', '.join(unmatched)}"
+    if s.head_pose:
+        msg += f"; {_import_head_pose(context, path)}"
     return msg
 
 
-def _pref(context, name, env):
-    """Add-on preference `name`, falling back to an environment variable (CI, headless agents)."""
-    addon = context.preferences.addons.get(ADDON_ID)
-    return (getattr(addon.preferences, name, "") if addon else "") or os.environ.get(env, "")
+def _import_head_pose(context, path):
+    """Key the CSV's head pose on the head bone. A missing piece is a note, never an error: the shapes are keyed."""
+    s = context.scene.faceforge
+    pose = mocap.read_head_pose(path, s.csv_fps)
+    if pose is None:
+        return "no head pose in this CSV"
+    arm = s.head_armature or mocap.find_armature(context.scene, _targets(context), s.head_bone)
+    if arm is None:
+        return f"head pose skipped: no armature with a '{s.head_bone}' bone (pick the rig)"
+    times, rot, pos = pose
+    fps = context.scene.render.fps / context.scene.render.fps_base
+    try:
+        keyed = mocap.apply_head_pose(arm, s.head_bone, times, rot, pos, fps, s.mocap_start_frame, s.head_gain,
+                                      s.neck_bone, s.neck_share, s.head_translate, s.head_translate_scale)
+    except ValueError as e:
+        return f"head pose skipped: {e}"
+    return f"head pose keyed on {', '.join(keyed)}"
 
 
 class _Op(bpy.types.Operator):
@@ -190,7 +217,14 @@ class FACEFORGE_OT_import_csv(_Op):
     bl_description = "Key the targets' shape keys from a face mocap CSV (Live Link Face or generic)"
 
     def run(self, context):
-        return _import_csv(context, bpy.path.abspath(context.scene.faceforge.csv_path))
+        s = context.scene.faceforge
+        profile = None
+        if s.csv_apply_profile:
+            path = _profile_path(context)
+            if not path:
+                raise ValueError("Apply actor profile is on but no actor profile is chosen")
+            profile = calib.load_profile(path)
+        return _import_csv(context, bpy.path.abspath(s.csv_path), profile)
 
 
 class FACEFORGE_OT_video_to_face(_Op):
@@ -203,10 +237,12 @@ class FACEFORGE_OT_video_to_face(_Op):
         src = bpy.path.abspath(s.video_path)
         out = os.path.splitext(src)[0] + "_faceforge.csv"
         python = bpy.path.abspath(_pref(context, "python_path", "FACEFORGE_PYTHON"))
-        model = bpy.path.abspath(_pref(context, "model_path", "FACEFORGE_MODEL"))
-        info = video.run(python, model, src, out, s.video_smooth, s.video_neutral, s.video_gain)
+        model = _face_model(context)
+        profile = _profile_path(context)
+        info = video.run(python, model, src, out, s.video_smooth, s.video_neutral, s.video_gain,
+                         profile=profile or None)
         s.csv_path = out
-        return f"{info}. {_import_csv(context, out)}"
+        return f"{info}{' (actor profile)' if profile else ''}. {_import_csv(context, out)}"
 
 
 class FACEFORGE_OT_auto_rig(_Op):
@@ -224,7 +260,7 @@ class FACEFORGE_OT_auto_rig(_Op):
         head = context.object
         extras = [o for o in context.selected_objects if o.type == "MESH" and o != head]
         python = bpy.path.abspath(_pref(context, "python_path", "FACEFORGE_PYTHON"))
-        model = bpy.path.abspath(_pref(context, "model_path", "FACEFORGE_MODEL"))
+        model = _face_model(context)
         arm = autofit.fit(context.scene, head, extras, python, model, s.fit_mode, s.fit_size)
         return f"{arm.name}: {len(arm.data.bones)} bones"
 
@@ -241,10 +277,10 @@ class FACEFORGE_OT_live_start(bpy.types.Operator):
             command = None
             if s.live_launch:
                 python = bpy.path.abspath(_pref(context, "python_path", "FACEFORGE_PYTHON"))
-                model = bpy.path.abspath(_pref(context, "model_path", "FACEFORGE_MODEL"))
+                model = _face_model(context)
                 video.check_setup(python, model)
                 command = live.helper_command(python, model, s.live_port, s.live_camera, s.video_smooth,
-                                              s.video_neutral, s.video_gain)
+                                              s.video_neutral, s.video_gain, profile=_profile_path(context))
             live.SESSION.start(s.live_port, command, s.live_record, context.scene.frame_current)
         except ValueError as e:
             self.report({"ERROR"}, str(e))
@@ -294,6 +330,76 @@ class FACEFORGE_OT_setup_help(bpy.types.Operator):
     def execute(self, context):
         self.report({"INFO"}, video.SETUP_TEXT)
         return {"FINISHED"}
+
+
+def _fill_report(s, lines):
+    s.calib_report.clear()
+    for line in lines:
+        row = s.calib_report.add()
+        row.name, row.text = "", line.strip()
+        row.bad = line.strip().startswith("Not detected")
+
+
+class FACEFORGE_OT_calibrate(_Op):
+    bl_idname = "faceforge.calibrate"
+    bl_label = "Calibrate"
+    bl_description = ("Learn how your face reads (gains and cross-talk) from your recording of the calibration "
+                      "script and save an actor profile next to the video")
+
+    replace: bpy.props.BoolProperty(name="Replace", default=False, options={"SKIP_SAVE"},
+                                    description="Replace a profile with the same label")
+
+    def invoke(self, context, event):
+        if os.path.isfile(self._out(context)):
+            self.replace = True  # execute only runs if the user confirms
+            return context.window_manager.invoke_confirm(self, event, title="Replace the actor profile?")
+        return self.execute(context)
+
+    @staticmethod
+    def _out(context):
+        s = context.scene.faceforge
+        label = re.sub(r"[^A-Za-z0-9_-]+", "_", s.calib_label).strip("_") or "actor"
+        return os.path.join(os.path.dirname(bpy.path.abspath(s.calib_video)), label + ".faceprofile.json")
+
+    def run(self, context):
+        s = context.scene.faceforge
+        src = bpy.path.abspath(s.calib_video)
+        out = self._out(context)
+        if os.path.isfile(out) and not self.replace:
+            raise ValueError(f"An actor profile '{os.path.basename(out)}' already exists: confirm to replace it")
+        python = bpy.path.abspath(_pref(context, "python_path", "FACEFORGE_PYTHON"))
+        model = _face_model(context)
+        tmp = tempfile.mkdtemp(prefix="faceforge_calib_")
+        try:
+            capture = os.path.join(tmp, "take.capture.npz")
+            video.run(python, model, src, os.path.join(tmp, "take.csv"), 0.0, calib.LEAD_SECONDS, 1.0,
+                      capture=capture)
+            profile, ev = calib.calibrate(calib.load_capture(capture), s.calib_label)
+        finally:  # the capture file is face data: not kept
+            shutil.rmtree(tmp, ignore_errors=True)
+        calib.save_profile(profile, out)
+        s.actor_profile = out
+        _fill_report(s, calib.report_lines(profile, ev))
+        return (f"Profile saved: {os.path.basename(out)}; target strongest {ev['before']['hits']} -> "
+                f"{ev['after']['hits']} of {len(ev['expressions'])}")
+
+
+class FACEFORGE_OT_profile_report(_Op):
+    bl_idname = "faceforge.profile_report"
+    bl_label = "Show profile report"
+    bl_description = "Show what the chosen actor profile corrects (from its calibration)"
+    bl_options = {"REGISTER"}
+
+    def run(self, context):
+        s = context.scene.faceforge
+        path = _profile_path(context)
+        if not path:
+            raise ValueError("No actor profile chosen")
+        profile = calib.load_profile(path)
+        if not profile.get("report", {}).get("expressions"):
+            raise ValueError("This profile has no report")
+        _fill_report(s, calib.report_lines(profile, profile["report"]))
+        return f"{os.path.basename(path)}: {len(s.calib_report)} lines"
 
 
 class FACEFORGE_OT_inspect(_Op):
@@ -356,6 +462,6 @@ classes = (
     FACEFORGE_OT_pair_add, FACEFORGE_OT_pair_remove, FACEFORGE_OT_bake,
     FACEFORGE_OT_reset_keys, FACEFORGE_OT_split_lr, FACEFORGE_OT_split_all,
     FACEFORGE_OT_import_csv, FACEFORGE_OT_video_to_face, FACEFORGE_OT_setup_help, FACEFORGE_OT_auto_rig,
-    FACEFORGE_OT_live_start, FACEFORGE_OT_live_stop,
+    FACEFORGE_OT_live_start, FACEFORGE_OT_live_stop, FACEFORGE_OT_calibrate, FACEFORGE_OT_profile_report,
     FACEFORGE_OT_inspect, FACEFORGE_OT_heatmap, FACEFORGE_OT_render_sheet,
 )
